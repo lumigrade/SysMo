@@ -1,0 +1,2 @@
+option('autostart', type: 'boolean', value: true,
+       description: 'Install an XDG autostart entry into ~/.config/autostart so SysMo launches at login')

@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<schemalist gettext-domain="sysmo">
+  <schema id="org.sysmo.SysMo" path="/org/sysmo/SysMo/">
+    <key name="window-width" type="i">
+      <default>420</default>
+      <summary>Window width</summary>
+    </key>
+    <key name="window-height" type="i">
+      <default>740</default>
+      <summary>Window height</summary>
+    </key>
+    <key name="window-maximized" type="b">
+      <default>false</default>
+      <summary>Whether the window is maximized</summary>
+    </key>
+    <key name="section-states" type="as">
+      <default>[]</default>
+      <summary>Expanded or collapsed state of each section</summary>
+      <description>Entries of the form "section-id:expanded" or "section-id:collapsed". Sections without an entry use their default state.</description>
+    </key>
+  </schema>
+</schemalist>

@@ -1,0 +1,11 @@
+# Build output
+/target/
+/build/
+/build-*/
+subprojects/magpie/target/
+
+# Editor / OS noise
+*.swp
+*~
+.idea/
+.vscode/

@@ -1,0 +1,12 @@
+[Desktop Entry]
+Type=Application
+Name=SysMo
+Comment=Compact system resources monitor with CPU and GPU temperatures
+Exec=@BINDIR@/sysmo
+Icon=org.sysmo.SysMo
+Terminal=false
+Categories=System;Monitor;GTK;
+Keywords=Monitor;System;CPU;GPU;Memory;Network;Disk;Temperature;
+StartupNotify=true
+StartupWMClass=sysmo
+@AUTOSTART@

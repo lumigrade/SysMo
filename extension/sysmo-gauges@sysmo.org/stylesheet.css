@@ -1,0 +1,44 @@
+/* SysMo Gauges - top bar styling */
+
+/* No group-wide highlight: each gauge reacts on its own. */
+.panel-button.sysmo-gauges-indicator,
+.panel-button.sysmo-gauges-indicator:hover,
+.panel-button.sysmo-gauges-indicator:active,
+.panel-button.sysmo-gauges-indicator:focus,
+.panel-button.sysmo-gauges-indicator:checked {
+    background-color: transparent;
+    box-shadow: none;
+}
+
+.sysmo-gauges {
+    spacing: 5px;
+}
+
+.sysmo-gauge,
+.sysmo-gauge:hover,
+.sysmo-gauge:active,
+.sysmo-gauge:focus,
+.sysmo-gauge:checked {
+    padding: 0px;
+    margin: 0px;
+    background: none;
+    border: none;
+    box-shadow: none;
+    border-radius: 14px;
+}
+
+.sysmo-gauge-number {
+    font-size: 11px;
+    font-weight: 800;
+    color: white;
+}
+
+.sysmo-gauge-tooltip {
+    background-color: rgba(8, 8, 10, 0.9);
+    border: 1px solid rgba(255, 255, 255, 0.16);
+    border-radius: 8px;
+    padding: 6px 10px;
+    color: white;
+    font-size: 12px;
+    text-align: center;
+}

@@ -1,0 +1,3 @@
+[submodule "subprojects/magpie"]
+	path = subprojects/magpie
+	url = https://gitlab.com/mission-center-devs/gng.git

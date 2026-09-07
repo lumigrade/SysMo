@@ -1,0 +1,8 @@
+{
+  "uuid": "sysmo-gauges@sysmo.org",
+  "name": "SysMo Gauges",
+  "description": "CPU load, CPU temperature, GPU load, VRAM and GPU temperature ring gauges in the top bar, fed by the SysMo app over D-Bus.",
+  "shell-version": ["46", "47", "48"],
+  "url": "",
+  "version": 1
+}
