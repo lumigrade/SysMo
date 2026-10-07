@@ -48,6 +48,17 @@ scrolledwindow > viewport > * {
     font-weight: bold;
 }
 
+/* CPU or GPU load above 80 %: a rounded red badge, bold white number. The
+ * spread shadow widens the badge without changing the label's size, so the
+ * legend does not shift. */
+.legend .value.high-load {
+    color: #ffffff;
+    font-weight: 800;
+    background-color: #e01b24;
+    box-shadow: 0 0 0 2px #e01b24;
+    border-radius: 6px;
+}
+
 .tnum {
     font-feature-settings: "tnum";
     font-variant-numeric: tabular-nums;

@@ -13,6 +13,11 @@
       <default>false</default>
       <summary>Whether the window is maximized</summary>
     </key>
+    <key name="stay-on-top" type="b">
+      <default>false</default>
+      <summary>Keep the window above other windows</summary>
+      <description>Applied by the SysMo Gauges GNOME Shell extension, which must be enabled.</description>
+    </key>
     <key name="section-states" type="as">
       <default>[]</default>
       <summary>Expanded or collapsed state of each section</summary>

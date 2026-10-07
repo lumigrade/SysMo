@@ -43,7 +43,8 @@ colour in its faint track ring.
 
 Behind the number a glossy disc fades in from 55, blends through amber and
 orange to red by 80 and deepens towards 100, with no hard steps. Temperatures
-use the same numbers in °C.
+use the same numbers in °C. With more than one GPU, the three GPU gauges show
+the average across the GPUs.
 
 ![Gauges under load](screenshots/panel-load.png)
 
@@ -176,6 +177,7 @@ log out and back in, since Ubuntu adds it at login when the directory exists.
 
 | Action | Result |
 |---|---|
+| Click the pin button | keep the window on top of others (needs the top-bar extension); remembered across restarts |
 | Click a section title | collapse or expand it; remembered across restarts |
 | Close the window | window hides, gauges keep updating |
 | <kbd>Ctrl</kbd>+<kbd>Q</kbd> | quit for real, engine included |

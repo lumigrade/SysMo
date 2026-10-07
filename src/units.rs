@@ -7,6 +7,11 @@ pub fn bytes_si(bytes: u64) -> String {
     glib::format_size(bytes).to_string()
 }
 
+/// GPU memory: always gigabytes ("9.0 GB", "0.6 GB"), so the legend stays narrow.
+pub fn gigabytes(bytes: u64) -> String {
+    format!("{:.1}\u{a0}GB", bytes as f64 / 1e9)
+}
+
 /// Transfer volumes and rates: IEC units ("2.4 KiB"), like System Monitor.
 pub fn bytes_iec(bytes: u64) -> String {
     glib::format_size_full(bytes, glib::FormatSizeFlags::IEC_UNITS).to_string()

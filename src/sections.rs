@@ -24,12 +24,16 @@ pub const NET_IN_COLOR: &str = "#3584e4";
 pub const NET_OUT_COLOR: &str = "#e66100";
 pub const DISK_READ_COLOR: &str = "#3584e4";
 pub const DISK_WRITE_COLOR: &str = "#e66100";
-/// System Monitor has no GPU graph; these are the GNOME palette's purple and yellow.
-pub const GPU_LOAD_COLOR: &str = "#9141ac";
+/// System Monitor has no GPU graph; a vivid green for load, so it stands out,
+/// and the GNOME palette's yellow for VRAM.
+pub const GPU_LOAD_COLOR: &str = "#00e676";
 pub const GPU_VRAM_COLOR: &str = "#f6d32d";
 /// Temperatures share the 0-100 axis (1 % = 1 °C) and are drawn as a dashed
 /// white curve, which stands out against every colour in the palette.
 pub const TEMPERATURE_COLOR: &str = "#ffffff";
+
+/// CPU and GPU loads above this are shown as a red badge.
+const HIGH_LOAD_PERCENT: f32 = 80.0;
 
 const PCI_VENDOR_INTEL: u32 = 0x8086;
 const PCI_VENDOR_NVIDIA: u32 = 0x10de;
@@ -61,6 +65,17 @@ fn temperature_text(celsius: Option<f32>) -> String {
     match celsius {
         Some(c) => units::temperature(c),
         None => NOT_AVAILABLE.to_owned(),
+    }
+}
+
+/// Red badge with the number centred in it.
+fn mark_high_load(label: &gtk::Label, percent: Option<f32>) {
+    if percent.is_some_and(|p| p > HIGH_LOAD_PERCENT) {
+        label.add_css_class("high-load");
+        label.set_xalign(0.5);
+    } else {
+        label.remove_css_class("high-load");
+        label.set_xalign(0.0);
     }
 }
 
@@ -260,6 +275,7 @@ impl CpuSection {
 
         self.usage
             .set_text(&format!("{:.1}%", cpu.total_usage_percent));
+        mark_high_load(&self.usage, Some(cpu.total_usage_percent));
         self.temperature
             .set_text(&temperature_text(cpu.temperature_celsius));
 
@@ -551,15 +567,17 @@ impl GpuSection {
             Some(percent) => format!("{percent:.1}%"),
             None => NOT_AVAILABLE.to_owned(),
         });
+        mark_high_load(&self.load, gpu.utilization_percent);
         match (gpu.used_memory, gpu.total_memory) {
             (Some(used), Some(total)) if total > 0 => {
-                self.vram.set_text(&format!(
-                    "{} ({})",
-                    units::bytes_si(used),
+                // GB only; the percentage lives in the tooltip to keep the
+                // legend narrow.
+                self.vram.set_text(&units::gigabytes(used));
+                self.vram.set_tooltip_text(Some(&format!(
+                    "of {} ({})",
+                    units::gigabytes(total),
                     units::percent(used as f64 / total as f64)
-                ));
-                self.vram
-                    .set_tooltip_text(Some(&format!("of {}", units::bytes_si(total))));
+                )));
             }
             _ => {
                 self.vram.set_text(NOT_AVAILABLE);

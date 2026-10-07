@@ -26,6 +26,7 @@ const KEY_WINDOW_WIDTH: &str = "window-width";
 const KEY_WINDOW_HEIGHT: &str = "window-height";
 const KEY_WINDOW_MAXIMIZED: &str = "window-maximized";
 const KEY_SECTION_STATES: &str = "section-states";
+const KEY_STAY_ON_TOP: &str = "stay-on-top";
 
 pub struct SysmoWindow {
     window: adw::ApplicationWindow,
@@ -80,6 +81,19 @@ impl SysmoWindow {
         let header = adw::HeaderBar::new();
         header.add_css_class("flat");
         header.set_title_widget(Some(&adw::WindowTitle::new(config::APP_NAME, "")));
+
+        // GTK 4 cannot keep its own window on top (not at all on Wayland), so
+        // this only stores the choice; the SysMo Gauges extension applies it.
+        let stay_on_top = gtk::ToggleButton::builder()
+            .icon_name("view-pin-symbolic")
+            .tooltip_text("Stay on top")
+            .build();
+        if let Some(settings) = &settings {
+            settings
+                .bind(KEY_STAY_ON_TOP, &stay_on_top, "active")
+                .build();
+        }
+        header.pack_start(&stay_on_top);
 
         let sections_box = gtk::Box::new(gtk::Orientation::Vertical, 6);
         sections_box.set_margin_top(4);
@@ -252,7 +266,8 @@ impl Inner {
         ordered
     }
 
-    /// The five top-bar figures plus the text the gauges show on hover.
+    /// The five top-bar figures plus the text the gauges show on hover. With
+    /// several GPUs, the GPU gauges show the average of all of them.
     fn gauge_state(readings: &Readings) -> GaugeState {
         let mut state = GaugeState::default();
         let cpu = &readings.cpu;
@@ -274,30 +289,66 @@ impl Inner {
             format!("{} cores", cpu.core_usage_percent.len()),
         );
 
-        if let Some(gpu) = Self::displayed_gpus(&readings.gpus).first() {
-            state
-                .names
-                .insert("gpu".to_owned(), GpuSection::device_name(gpu));
-            if let Some(percent) = gpu.utilization_percent {
-                state.values.insert("gpu-load".to_owned(), percent as f64);
-            }
-            if let (Some(used), Some(total)) = (gpu.used_memory, gpu.total_memory) {
-                if total > 0 {
-                    state
-                        .values
-                        .insert("gpu-vram".to_owned(), used as f64 * 100.0 / total as f64);
-                    state.details.insert(
-                        "gpu-vram".to_owned(),
-                        format!("{} of {}", units::bytes_si(used), units::bytes_si(total)),
-                    );
+        let gpus = Self::displayed_gpus(&readings.gpus);
+        if let Some(name) = Self::gpu_names(&gpus) {
+            state.names.insert("gpu".to_owned(), name);
+        }
+        let load = gpus
+            .iter()
+            .filter_map(|gpu| gpu.utilization_percent.map(f64::from));
+        if let Some(percent) = average(load) {
+            state.values.insert("gpu-load".to_owned(), percent);
+        }
+        let vram = gpus
+            .iter()
+            .filter_map(|gpu| match (gpu.used_memory, gpu.total_memory) {
+                (Some(used), Some(total)) if total > 0 => Some(used as f64 * 100.0 / total as f64),
+                _ => None,
+            });
+        if let Some(percent) = average(vram) {
+            state.values.insert("gpu-vram".to_owned(), percent);
+        }
+        let temperature = gpus
+            .iter()
+            .filter_map(|gpu| gpu.temperature_c.map(f64::from));
+        if let Some(celsius) = average(temperature) {
+            state.values.insert("gpu-temp".to_owned(), celsius);
+        }
+
+        match gpus.as_slice() {
+            [gpu] => {
+                if let (Some(used), Some(total)) = (gpu.used_memory, gpu.total_memory) {
+                    if total > 0 {
+                        state.details.insert(
+                            "gpu-vram".to_owned(),
+                            format!("{} of {}", units::gigabytes(used), units::gigabytes(total)),
+                        );
+                    }
                 }
             }
-            if let Some(celsius) = gpu.temperature_c {
-                state.values.insert("gpu-temp".to_owned(), celsius as f64);
+            [] => {}
+            _ => {
+                for key in ["gpu-load", "gpu-vram", "gpu-temp"] {
+                    state.details.insert(key.to_owned(), "average".to_owned());
+                }
             }
         }
 
         state
+    }
+
+    /// "RTX 4080", "2 × RTX 4080" or "RTX 4080 + RTX 3060".
+    fn gpu_names(gpus: &[&Gpu]) -> Option<String> {
+        let names: Vec<String> = gpus
+            .iter()
+            .map(|gpu| GpuSection::device_name(gpu))
+            .collect();
+        let first = names.first()?;
+        if names.len() > 1 && names.iter().all(|name| name == first) {
+            Some(format!("{} × {first}", names.len()))
+        } else {
+            Some(names.join(" + "))
+        }
     }
 
     fn sync_gpus(&self, gpus: &HashMap<String, Gpu>) {
@@ -375,6 +426,12 @@ impl Inner {
             }
         }
     }
+}
+
+/// Mean of the readings that are present; `None` when there are none.
+fn average(values: impl Iterator<Item = f64>) -> Option<f64> {
+    let (sum, count) = values.fold((0.0, 0u32), |(sum, count), value| (sum + value, count + 1));
+    (count > 0).then(|| sum / count as f64)
 }
 
 fn load_settings() -> Option<gio::Settings> {
