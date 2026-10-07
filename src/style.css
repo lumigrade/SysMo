@@ -48,6 +48,15 @@ scrolledwindow > viewport > * {
     font-weight: bold;
 }
 
+/* CPU or GPU load above 80 %. The spread shadow widens the white backdrop
+ * without changing the label's size, so the legend does not shift. */
+.legend .value.high-load {
+    color: #e01b24;
+    background-color: #ffffff;
+    box-shadow: 0 0 0 2px #ffffff;
+    border-radius: 2px;
+}
+
 .tnum {
     font-feature-settings: "tnum";
     font-variant-numeric: tabular-nums;

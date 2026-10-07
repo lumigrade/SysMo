@@ -5,6 +5,8 @@
  * D-Bus (org.sysmo.SysMo, /org/sysmo/SysMo/Gauges), so SysMo has to be
  * running; clicking a gauge starts or raises it.
  *
+ * It also keeps the SysMo window on top while the app's pin button is on.
+ *
  * SPDX-License-Identifier: GPL-3.0-or-later
  */
 
@@ -24,6 +26,8 @@ const BUS_NAME = 'org.sysmo.SysMo';
 const OBJECT_PATH = '/org/sysmo/SysMo/Gauges';
 const INTERFACE = 'org.sysmo.SysMo.Gauges';
 const APP_DESKTOP_ID = 'org.sysmo.SysMo.desktop';
+const SETTINGS_SCHEMA = 'org.sysmo.SysMo';
+const STAY_ON_TOP_KEY = 'stay-on-top';
 
 const GAUGE_SIZE = 28;
 const RING_WIDTH = 2.5;
@@ -35,7 +39,7 @@ const ARC_SEGMENTS_PER_TURN = 96;
 const GAUGES = [
     {key: 'cpu-load', title: 'CPU load', unit: '%', device: 'cpu', color: [0.878, 0.106, 0.141]},
     {key: 'cpu-temp', title: 'CPU temperature', unit: '°C', device: 'cpu', color: [1.000, 0.471, 0.000]},
-    {key: 'gpu-load', title: 'GPU load', unit: '%', device: 'gpu', color: [0.569, 0.255, 0.675]},
+    {key: 'gpu-load', title: 'GPU load', unit: '%', device: 'gpu', color: [0.000, 0.902, 0.463]},
     {key: 'gpu-vram', title: 'GPU memory (VRAM)', unit: '%', device: 'gpu', color: [0.965, 0.827, 0.176]},
     {key: 'gpu-temp', title: 'GPU temperature', unit: '°C', device: 'gpu', color: [0.208, 0.518, 0.894]},
 ];
@@ -381,13 +385,54 @@ class SysmoGaugesIndicator extends PanelMenu.Button {
     }
 });
 
+// Keeps SysMo's window above the others while the app's "stay-on-top"
+// setting (its pin button) is on. GTK 4 apps cannot do this themselves on
+// Wayland; the shell can, on X11 and Wayland alike.
+class StayOnTop {
+    constructor() {
+        const schema = Gio.SettingsSchemaSource.get_default()?.lookup(SETTINGS_SCHEMA, true);
+        this._app = Shell.AppSystem.get_default().lookup_app(APP_DESKTOP_ID);
+        if (!schema?.has_key(STAY_ON_TOP_KEY) || !this._app) {
+            console.warn('SysMo Gauges: SysMo is not installed; stay on top is unavailable');
+            this._settings = null;
+            return;
+        }
+        this._settings = new Gio.Settings({settings_schema: schema});
+        this._settings.connectObject(`changed::${STAY_ON_TOP_KEY}`, () => this._apply(), this);
+        // SysMo gets a new window each time it is shown after being closed.
+        this._app.connectObject('windows-changed', () => this._apply(), this);
+        this._apply();
+    }
+
+    _apply(above = this._settings.get_boolean(STAY_ON_TOP_KEY)) {
+        for (const window of this._app.get_windows()) {
+            if (above && !window.is_above())
+                window.make_above();
+            else if (!above && window.is_above())
+                window.unmake_above();
+        }
+    }
+
+    destroy() {
+        if (!this._settings)
+            return;
+        this._settings.disconnectObject(this);
+        this._app.disconnectObject(this);
+        this._apply(false);
+        this._settings = null;
+    }
+}
+
 export default class SysmoGaugesExtension extends Extension {
     enable() {
         this._indicator = new Indicator();
         Main.panel.addToStatusArea(this.uuid, this._indicator, 0, 'right');
+        this._stayOnTop = new StayOnTop();
     }
 
     disable() {
+        this._stayOnTop?.destroy();
+        this._stayOnTop = null;
         this._indicator?.destroy();
         this._indicator = null;
     }
