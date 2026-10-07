@@ -32,7 +32,7 @@ pub const GPU_VRAM_COLOR: &str = "#f6d32d";
 /// white curve, which stands out against every colour in the palette.
 pub const TEMPERATURE_COLOR: &str = "#ffffff";
 
-/// CPU and GPU loads above this are shown red on white.
+/// CPU and GPU loads above this are shown as a red badge.
 const HIGH_LOAD_PERCENT: f32 = 80.0;
 
 const PCI_VENDOR_INTEL: u32 = 0x8086;
@@ -68,11 +68,14 @@ fn temperature_text(celsius: Option<f32>) -> String {
     }
 }
 
+/// Red badge with the number centred in it.
 fn mark_high_load(label: &gtk::Label, percent: Option<f32>) {
     if percent.is_some_and(|p| p > HIGH_LOAD_PERCENT) {
         label.add_css_class("high-load");
+        label.set_xalign(0.5);
     } else {
         label.remove_css_class("high-load");
+        label.set_xalign(0.0);
     }
 }
 
@@ -567,13 +570,14 @@ impl GpuSection {
         mark_high_load(&self.load, gpu.utilization_percent);
         match (gpu.used_memory, gpu.total_memory) {
             (Some(used), Some(total)) if total > 0 => {
-                self.vram.set_text(&format!(
-                    "{} ({})",
-                    units::bytes_si(used),
+                // GB only; the percentage lives in the tooltip to keep the
+                // legend narrow.
+                self.vram.set_text(&units::gigabytes(used));
+                self.vram.set_tooltip_text(Some(&format!(
+                    "of {} ({})",
+                    units::gigabytes(total),
                     units::percent(used as f64 / total as f64)
-                ));
-                self.vram
-                    .set_tooltip_text(Some(&format!("of {}", units::bytes_si(total))));
+                )));
             }
             _ => {
                 self.vram.set_text(NOT_AVAILABLE);

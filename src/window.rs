@@ -321,7 +321,7 @@ impl Inner {
                     if total > 0 {
                         state.details.insert(
                             "gpu-vram".to_owned(),
-                            format!("{} of {}", units::bytes_si(used), units::bytes_si(total)),
+                            format!("{} of {}", units::gigabytes(used), units::gigabytes(total)),
                         );
                     }
                 }
