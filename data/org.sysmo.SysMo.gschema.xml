@@ -13,6 +13,33 @@
       <default>false</default>
       <summary>Whether the window is maximized</summary>
     </key>
+    <key name="stay-on-top" type="b">
+      <default>false</default>
+      <summary>Keep the window above other windows</summary>
+      <description>Applied by the SysMo Gauges GNOME Shell extension, which must be enabled.</description>
+    </key>
+    <key name="cooler-display" type="b">
+      <default>true</default>
+      <summary>Show CPU readings on a DeepCool cooler's display</summary>
+    </key>
+    <key name="cooler-fahrenheit" type="b">
+      <default>false</default>
+      <summary>Show °F instead of °C on the cooler's display</summary>
+    </key>
+    <key name="fan-profiles" type="a{s(bi)}">
+      <default>{}</default>
+      <summary>Settings of each fan</summary>
+      <description>Fan header (hwmon chip name and channel, for example "nct6799:2") to (held at a fixed speed, speed in percent). Fans not listed are left to the motherboard.</description>
+    </key>
+    <key name="fan-auto-modes" type="a{ss}">
+      <default>{}</default>
+      <summary>Motherboard fan modes to restore</summary>
+      <description>Each fan header's pwm_enable value before SysMo took control; written back when SysMo hands the fan back.</description>
+    </key>
+    <key name="fan-selected" type="s">
+      <default>''</default>
+      <summary>Fan shown in the cooler panel</summary>
+    </key>
     <key name="section-states" type="as">
       <default>[]</default>
       <summary>Expanded or collapsed state of each section</summary>

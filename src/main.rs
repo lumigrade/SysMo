@@ -12,8 +12,11 @@
  */
 
 mod config;
+mod cooler;
+mod cooler_panel;
 mod dbus;
 mod engine;
+mod fans;
 mod graph;
 mod sections;
 mod units;
