@@ -26,24 +26,19 @@
       <default>false</default>
       <summary>Show °F instead of °C on the cooler's display</summary>
     </key>
-    <key name="fan-header" type="s">
+    <key name="fan-profiles" type="a{s(bi)}">
+      <default>{}</default>
+      <summary>Settings of each fan</summary>
+      <description>Fan header (hwmon chip name and channel, for example "nct6799:2") to (held at a fixed speed, speed in percent). Fans not listed are left to the motherboard.</description>
+    </key>
+    <key name="fan-auto-modes" type="a{ss}">
+      <default>{}</default>
+      <summary>Motherboard fan modes to restore</summary>
+      <description>Each fan header's pwm_enable value before SysMo took control; written back when SysMo hands the fan back.</description>
+    </key>
+    <key name="fan-selected" type="s">
       <default>''</default>
-      <summary>Fan header of the CPU fan</summary>
-      <description>hwmon chip name and channel, for example "nct6799:2". Empty picks one automatically.</description>
-    </key>
-    <key name="fan-fixed" type="b">
-      <default>false</default>
-      <summary>Hold the CPU fan at a fixed speed instead of motherboard control</summary>
-    </key>
-    <key name="fan-percent" type="i">
-      <range min="30" max="100"/>
-      <default>60</default>
-      <summary>Fixed CPU fan speed in percent</summary>
-    </key>
-    <key name="fan-auto-mode" type="s">
-      <default>''</default>
-      <summary>Motherboard fan mode to restore</summary>
-      <description>The fan header's pwm_enable value before SysMo took control; written back when SysMo hands the fan back.</description>
+      <summary>Fan shown in the cooler panel</summary>
     </key>
     <key name="section-states" type="as">
       <default>[]</default>

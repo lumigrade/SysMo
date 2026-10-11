@@ -31,8 +31,8 @@ away, and rebuilds the one page worth having.
 * Closing the window keeps SysMo running for the top-bar gauges;
   <kbd>Ctrl</kbd>+<kbd>Q</kbd> quits properly.
 * **DeepCool AK700 DIGITAL** (and coolers sharing its display protocol) —
-  SysMo feeds the cooler's display and can hold the CPU fan at a fixed speed;
-  see [DeepCool cooler and CPU fan](#deepcool-cooler-and-cpu-fan)
+  SysMo feeds the cooler's display and can hold each fan at its own fixed
+  speed; see [DeepCool cooler and fans](#deepcool-cooler-and-fans)
 
 ### Top bar gauges
 
@@ -189,7 +189,7 @@ log out and back in, since Ubuntu adds it at login when the directory exists.
 | Hover a top-bar gauge | reading, device name and detail |
 | Click the cooler button at the right of the CPU title | open the DeepCool cooler panel (only shown when such a cooler is plugged in) |
 
-## DeepCool cooler and CPU fan
+## DeepCool cooler and fans
 
 With a **DeepCool AK700 DIGITAL** plugged in over USB, a small `AK700 ▾`
 button appears at the right end of the CPU title. It opens a panel with:
@@ -198,11 +198,13 @@ button appears at the right end of the CPU title. It opens a panel with:
   the cooler's display once a second, in °C or °F. No other program is
   needed. The AK620 G2, AK500 G2 and AK400 G2 DIGITAL, LQ240, LQ360 and
   ASSASSIN IV VC VISION use the same protocol and are recognised too.
-* **CPU fan** — the cooler's fans are plugged into the motherboard, which sets
-  their speed. Pick the fan header (its live RPM is shown), then either leave
-  **Fixed speed** off so the motherboard stays in charge, or switch it on to
-  hold the fan at 30–100 %. SysMo goes to full speed if the CPU reaches
-  85 °C, and hands the fan back to the motherboard when it quits.
+* **Fans** — the cooler's fans are plugged into the motherboard, which sets
+  their speed. Every fan that spins gets a button (`Fan 1`, `Fan 2`, …) next
+  to the "Fans" heading; clicking one shows that fan's own live RPM,
+  **Fixed speed** switch and speed, each remembered separately. With Fixed
+  speed off the motherboard stays in charge of that fan; switched on, the fan
+  is held at 30–100 %. Fixed fans go to full speed if the CPU reaches 85 °C,
+  and every fan is handed back to the motherboard when SysMo quits.
 
 ### One-time setup
 

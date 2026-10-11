@@ -110,10 +110,6 @@ impl Control {
         })
     }
 
-    pub fn header_id(&self) -> &str {
-        &self.header.id
-    }
-
     pub fn auto_mode(&self) -> &str {
         &self.auto_mode
     }
