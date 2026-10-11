@@ -59,6 +59,13 @@ scrolledwindow > viewport > * {
     border-radius: 6px;
 }
 
+/* The DeepCool cooler button at the right of the CPU title: no taller than
+ * the title itself. */
+.cooler-button {
+    min-height: 0;
+    padding: 1px 6px;
+}
+
 .tnum {
     font-feature-settings: "tnum";
     font-variant-numeric: tabular-nums;

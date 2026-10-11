@@ -1,0 +1,13 @@
+# SysMo: one-time permissions for the DeepCool cooler panel. Install with
+#   sudo cp data/70-sysmo.rules /etc/udev/rules.d/
+#   sudo udevadm control --reload
+#   sudo udevadm trigger --action=add --subsystem-match=hidraw --subsystem-match=hwmon
+
+# The display of DeepCool digital coolers (USB vendor 3633), for whoever is
+# logged in at the computer.
+SUBSYSTEM=="hidraw", ATTRS{idVendor}=="3633", TAG+="uaccess"
+
+# Motherboard fan speed: lets SysMo switch a fan header between motherboard
+# control and a fixed speed (pwmN and pwmN_enable). Note that any local user
+# can then change fan speeds.
+ACTION=="add", SUBSYSTEM=="hwmon", RUN+="/bin/sh -c 'chmod a+w /sys%p/pwm[0-9] /sys%p/pwm[0-9]_enable 2>/dev/null; true'"

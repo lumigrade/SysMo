@@ -30,6 +30,9 @@ away, and rebuilds the one page worth having.
   GNOME System Monitor. Every section collapses and remembers its state.
 * Closing the window keeps SysMo running for the top-bar gauges;
   <kbd>Ctrl</kbd>+<kbd>Q</kbd> quits properly.
+* **DeepCool AK700 DIGITAL** (and coolers sharing its display protocol) —
+  SysMo feeds the cooler's display and can hold the CPU fan at a fixed speed;
+  see [DeepCool cooler and CPU fan](#deepcool-cooler-and-cpu-fan)
 
 ### Top bar gauges
 
@@ -60,7 +63,7 @@ SysMo is a **fork of [Mission Center][mc]** (upstream `main`, commit
 user interface was deleted and rewritten — about 20,000 of 23,000 front-end
 lines are gone.
 
-The code SysMo inherits comes from **four upstream repositories**:
+The code SysMo inherits comes from **five upstream repositories**:
 
 | Repository | What it provides | Licence | How it is included |
 |---|---|---|---|
@@ -68,6 +71,7 @@ The code SysMo inherits comes from **four upstream repositories**:
 | [app-rummage][rummage] | Application detection; a build dependency of magpie. | MIT | nested submodule inside magpie |
 | [NVTOP][nvtop] | The GPU backend — utilisation, VRAM, temperature, power. | GPL-3.0 | downloaded, checksummed and patched by magpie's build script |
 | [GNOME System Monitor][gsm] | The graph rendering. `src/graph.rs` is a Rust and cairo port of its `load-graph.cpp` and `gsm-graph.c`, reproducing the grid, time axis, smooth scrolling and axis rounding. | GPL-2.0-or-later | ported source, not copied |
+| [deepcool-digital-linux][deepcool] | The USB packet for DeepCool cooler displays (AK700 / LQ series mapping table), used by `src/cooler.rs`. | GPL-3.0 | protocol ported, not copied |
 
 [CREDITS.md](CREDITS.md) has the exact commits, what was kept, what was
 removed, and the licence reasoning.
@@ -183,6 +187,65 @@ log out and back in, since Ubuntu adds it at login when the directory exists.
 | <kbd>Ctrl</kbd>+<kbd>Q</kbd> | quit for real, engine included |
 | Click a top-bar gauge | open or raise the window |
 | Hover a top-bar gauge | reading, device name and detail |
+| Click the cooler button at the right of the CPU title | open the DeepCool cooler panel (only shown when such a cooler is plugged in) |
+
+## DeepCool cooler and CPU fan
+
+With a **DeepCool AK700 DIGITAL** plugged in over USB, a small `AK700 ▾`
+button appears at the right end of the CPU title. It opens a panel with:
+
+* **Display** — SysMo sends CPU power, temperature, load and clock speed to
+  the cooler's display once a second, in °C or °F. No other program is
+  needed. The AK620 G2, AK500 G2 and AK400 G2 DIGITAL, LQ240, LQ360 and
+  ASSASSIN IV VC VISION use the same protocol and are recognised too.
+* **CPU fan** — the cooler's fans are plugged into the motherboard, which sets
+  their speed. Pick the fan header (its live RPM is shown), then either leave
+  **Fixed speed** off so the motherboard stays in charge, or switch it on to
+  hold the fan at 30–100 %. SysMo goes to full speed if the CPU reaches
+  85 °C, and hands the fan back to the motherboard when it quits.
+
+### One-time setup
+
+Linux only lets root talk to the cooler and the fan controller, so both need
+a permission rule once. From the SysMo source folder:
+
+```bash
+sudo cp data/70-sysmo.rules /etc/udev/rules.d/
+sudo udevadm control --reload
+sudo udevadm trigger --action=add --subsystem-match=hidraw --subsystem-match=hwmon
+```
+
+**Fan control also needs the motherboard's sensor driver.** Many boards
+(including the ASUS ROG STRIX B860-I) do not load it automatically. Try it,
+then check that a fan control appeared:
+
+```bash
+sudo modprobe nct6775
+ls /sys/class/hwmon/*/pwm*_enable
+```
+
+If files are listed, load the driver at every boot and apply the rule to it:
+
+```bash
+echo nct6775 | sudo tee /etc/modules-load.d/sysmo-fans.conf
+sudo udevadm trigger --action=add --subsystem-match=hwmon
+```
+
+If nothing is listed, `sudo dmesg | grep -i nct` usually says why; an "ACPI
+resource conflict" means the board firmware reserves the chip.
+
+**Optional: CPU power on the display.** The power figure shows 0 W unless
+the CPU energy counter is readable. Linux hides it on purpose (a power side
+channel, CVE-2020-8694), so this step is your call:
+
+```bash
+sudo cp data/71-sysmo-cpu-power.rules /etc/udev/rules.d/
+sudo udevadm control --reload
+sudo udevadm trigger --action=add --subsystem-match=powercap
+```
+
+If the panel says "Needs the one-time setup", a rule is missing or has not
+been applied yet; a reboot applies all of them.
 
 ## Uninstalling
 
@@ -229,6 +292,9 @@ SYSMO_DATA_DIR=build/src target/release/sysmo                        # run it
 | [`src/graph.rs`](src/graph.rs) | the GNOME System Monitor graph port |
 | [`src/engine/`](src/engine) | starts the engine, samples it over nng |
 | [`src/dbus.rs`](src/dbus.rs) | publishes the gauge figures |
+| [`src/cooler.rs`](src/cooler.rs) | DeepCool cooler display over USB HID |
+| [`src/fans.rs`](src/fans.rs) | motherboard fan headers (hwmon PWM) |
+| [`src/cooler_panel.rs`](src/cooler_panel.rs) | the cooler panel in the CPU section |
 | [`extension/`](extension) | the GNOME Shell extension |
 
 Environment variables: `SYSMO_ENGINE` (engine binary), `SYSMO_DATA_DIR`
@@ -251,7 +317,8 @@ changes also need the extension disabled and enabled again.
 ## Licence
 
 GPL-3.0-or-later — see [COPYING](COPYING). SysMo inherits code from Mission
-Center, magpie, app-rummage, NVTOP and GNOME System Monitor; their authors
+Center, magpie, app-rummage, NVTOP, GNOME System Monitor and
+deepcool-digital-linux; their authors
 and licences are credited in [CREDITS.md](CREDITS.md).
 
 [mc]: https://gitlab.com/mission-center-devs/mission-center
@@ -259,3 +326,4 @@ and licences are credited in [CREDITS.md](CREDITS.md).
 [rummage]: https://gitlab.com/mission-center-devs/app-detection
 [nvtop]: https://github.com/Syllo/nvtop
 [gsm]: https://gitlab.gnome.org/GNOME/gnome-system-monitor
+[deepcool]: https://github.com/Nortank12/deepcool-digital-linux

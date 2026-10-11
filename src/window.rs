@@ -14,6 +14,7 @@ use gtk::{gio, glib};
 use gtk::glib::g_warning;
 
 use crate::config;
+use crate::cooler_panel::CoolerPanel;
 use crate::dbus::{GaugeExport, GaugeState};
 use crate::engine::{Engine, Gpu, Readings};
 use crate::graph::{LoadGraph, FRAMES_PER_UNIT, UPDATE_INTERVAL_MS};
@@ -45,6 +46,7 @@ struct Inner {
     graphs: RefCell<Vec<LoadGraph>>,
     engine: RefCell<Option<Engine>>,
     gauges: Option<GaugeExport>,
+    cooler: CoolerPanel,
     frame: Cell<u32>,
     text_scaling: f64,
     /// Set by the "quit" action; otherwise closing the window only hides it
@@ -114,6 +116,19 @@ impl SysmoWindow {
 
         let expanded = |id: &str| section_states.get(id).copied().unwrap_or(true);
         let cpu = CpuSection::new(expanded("cpu"), text_scaling);
+        // DeepCool cooler button at the right of the CPU title; its panel
+        // opens above the CPU graph. Hidden when no such cooler is plugged in.
+        let cooler = CoolerPanel::new(settings.clone());
+        cpu.section.set_title_accessory(cooler.button());
+        cpu.section.add_above_graph(cooler.widget());
+        cooler.button().connect_toggled({
+            let expander = cpu.section.expander.clone();
+            move |button| {
+                if button.is_active() {
+                    expander.set_expanded(true);
+                }
+            }
+        });
         let memory = MemorySection::new(expanded("memory"), text_scaling);
         let network = NetworkSection::new(expanded("network"), text_scaling);
         let disk = DiskSection::new(expanded("disk"), text_scaling);
@@ -151,6 +166,7 @@ impl SysmoWindow {
             graphs: RefCell::new(graphs),
             engine: RefCell::new(Some(engine)),
             gauges,
+            cooler,
             frame: Cell::new(0),
             text_scaling,
             quitting: Cell::new(false),
@@ -194,6 +210,8 @@ impl SysmoWindow {
             move |window| {
                 inner.save_window_state(window);
                 if inner.quitting.get() {
+                    // Hands the fan back to the motherboard.
+                    inner.cooler.shutdown();
                     // Stops the engine process before the window goes away.
                     inner.engine.borrow_mut().take();
                     glib::Propagation::Proceed
@@ -242,6 +260,7 @@ impl Inner {
 
     fn apply(&self, readings: &Readings) {
         self.cpu.update(&readings.cpu);
+        self.cooler.update(&readings.cpu);
         if let Some(devices) = &readings.memory_devices {
             self.memory.set_devices(devices, readings.memory.mem_total);
         }

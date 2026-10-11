@@ -22,7 +22,7 @@ and a trimmed copy of its IPC client in
 [`src/engine/client.rs`](src/engine/client.rs), which still carries its
 original copyright header.
 
-## The four repositories SysMo inherits from
+## The five repositories SysMo inherits from
 
 ### 1. magpie — the data engine
 
@@ -85,6 +85,23 @@ colours are read from GNOME System Monitor's own GSettings palette.
 
 GPL-2-or-later is upward compatible with GPL-3, so this port can be
 distributed as part of a GPL-3-or-later work.
+
+### 5. deepcool-digital-linux — the cooler display protocol
+
+* Source: <https://github.com/Nortank12/deepcool-digital-linux>
+* Read at: `8ab8338460b0d4c3d77723feae95f66e4251f61c` (31 August 2026)
+* Licence: GPL-3.0
+* In this repo: **ported, not copied.**
+  [`src/cooler.rs`](src/cooler.rs) builds the 64-byte status packet from its
+  "LQ Series / ASSASSIN IV / AK G2 Series / AK700" mapping table and its
+  device list (USB vendor 3633, product IDs 13, 15, 31 and 41–44)
+
+deepcool-digital-linux is a stand-alone daemon that drives the displays of
+DeepCool coolers and cases. SysMo does not run it; it sends the same packet
+itself, filled with the readings it already has from magpie, and writes it
+to `/dev/hidrawN` instead of going through hidapi. The `data/70-sysmo.rules`
+display rule and the optional `data/71-sysmo-cpu-power.rules` follow the
+udev rules in its README.
 
 ## Licence of the result
 

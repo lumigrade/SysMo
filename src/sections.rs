@@ -121,6 +121,7 @@ pub struct Section {
     pub expander: gtk::Expander,
     pub graph: LoadGraph,
     title: gtk::Label,
+    content: gtk::Box,
     legend: gtk::Box,
 }
 
@@ -158,6 +159,7 @@ impl Section {
             expander,
             graph,
             title: title_label,
+            content,
             legend,
         }
     }
@@ -166,6 +168,21 @@ impl Section {
         if self.title.text() != title {
             self.title.set_text(title);
         }
+    }
+
+    /// Put a small widget at the right end of the title row.
+    pub fn set_title_accessory(&self, widget: &impl IsA<gtk::Widget>) {
+        self.expander.set_label_widget(None::<&gtk::Widget>);
+        self.title.set_hexpand(true);
+        let row = gtk::Box::new(gtk::Orientation::Horizontal, 6);
+        row.append(&self.title);
+        row.append(widget);
+        self.expander.set_label_widget(Some(&row));
+    }
+
+    /// Put a widget between the title and the graph.
+    pub fn add_above_graph(&self, widget: &impl IsA<gtk::Widget>) {
+        self.content.prepend(widget);
     }
 
     /// Append "[chip] name value" to the legend and return the value label.

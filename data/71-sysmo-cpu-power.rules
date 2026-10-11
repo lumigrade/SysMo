@@ -1,0 +1,9 @@
+# SysMo, optional: CPU package power (W) on the DeepCool cooler's display.
+#
+# Makes the Intel RAPL energy counter readable by every user. That re-opens a
+# known power side channel (PLATYPUS, CVE-2020-8694), which is why Linux hides
+# it by default. Without this rule the display shows 0 W. Install with
+#   sudo cp data/71-sysmo-cpu-power.rules /etc/udev/rules.d/
+#   sudo udevadm control --reload
+#   sudo udevadm trigger --action=add --subsystem-match=powercap
+ACTION=="add", SUBSYSTEM=="powercap", KERNEL=="intel-rapl:0", RUN+="/bin/chmod 444 /sys%p/energy_uj"
