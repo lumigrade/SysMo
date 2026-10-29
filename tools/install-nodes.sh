@@ -93,8 +93,10 @@ EOF
 
 install_node() {
     host=$1
+    # Same release, e.g. "Ubuntu 24.04"; its point updates (24.04.4, 24.04.5)
+    # share the same system libraries.
     # shellcheck disable=SC2016 # expands on the node
-    there=$($SSH "$host" '. /etc/os-release && echo "$PRETTY_NAME"' 2>/dev/null) || {
+    there=$($SSH "$host" '. /etc/os-release && echo "$NAME $VERSION_ID"' 2>/dev/null) || {
         echo "can't log in with this computer's SSH key (try: ssh $host)"
         return 1
     }
@@ -132,7 +134,7 @@ if [ "$remove" = false ]; then
     done
 fi
 # shellcheck disable=SC1091
-here=$(. /etc/os-release && echo "$PRETTY_NAME")
+here=$(. /etc/os-release && echo "$NAME $VERSION_ID")
 
 # All nodes at once; each one's lines are prefixed with its address.
 failures=$(mktemp -d)
