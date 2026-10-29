@@ -14,7 +14,7 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use arrayvec::ArrayString;
-use gtk::glib::{g_critical, g_debug, g_warning};
+use glib::{g_critical, g_debug, g_warning};
 
 use magpie_types::cpu::{cpu_response, Cpu};
 use magpie_types::disks::disks_response::DiskList;

@@ -48,6 +48,59 @@ scrolledwindow > viewport > * {
     font-weight: bold;
 }
 
+/* CPU or GPU load above 80 %: a rounded red badge, bold white number. The
+ * spread shadow widens the badge without changing the label's size, so the
+ * legend does not shift. */
+.legend .value.high-load {
+    color: #ffffff;
+    font-weight: 800;
+    background-color: #e01b24;
+    box-shadow: 0 0 0 2px #e01b24;
+    border-radius: 6px;
+}
+
+/* The DeepCool cooler button at the right of the CPU title: no taller than
+ * the title itself. */
+.cooler-button {
+    min-height: 0;
+    padding: 1px 6px;
+}
+
+/* Network tab: one row per node, green while it works, red while it idles,
+ * dimmed while it does not reply. */
+row.node-row.node-working {
+    background-color: alpha(#2ec27e, 0.24);
+}
+
+row.node-row.node-idle {
+    background-color: alpha(#e01b24, 0.32);
+}
+
+row.node-row.node-no-reply {
+    opacity: 0.55;
+}
+
+.node-value {
+    font-weight: bold;
+}
+
+.node-badge {
+    font-weight: 800;
+    font-size: 0.85em;
+    color: #ffffff;
+    border-radius: 6px;
+    padding: 2px 6px;
+    background-color: alpha(#ffffff, 0.18);
+}
+
+row.node-working .node-badge {
+    background-color: #26a269;
+}
+
+row.node-idle .node-badge {
+    background-color: #e01b24;
+}
+
 .tnum {
     font-feature-settings: "tnum";
     font-variant-numeric: tabular-nums;

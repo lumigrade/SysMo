@@ -14,9 +14,12 @@ use gtk::{gio, glib};
 use gtk::glib::g_warning;
 
 use crate::config;
+use crate::cooler_panel::CoolerPanel;
 use crate::dbus::{GaugeExport, GaugeState};
 use crate::engine::{Engine, Gpu, Readings};
 use crate::graph::{LoadGraph, FRAMES_PER_UNIT, UPDATE_INTERVAL_MS};
+use crate::lan;
+use crate::network_page::NetworkPage;
 use crate::sections::{
     clean_cpu_name, CpuSection, DiskSection, GpuSection, MemorySection, NetworkSection,
 };
@@ -26,6 +29,10 @@ const KEY_WINDOW_WIDTH: &str = "window-width";
 const KEY_WINDOW_HEIGHT: &str = "window-height";
 const KEY_WINDOW_MAXIMIZED: &str = "window-maximized";
 const KEY_SECTION_STATES: &str = "section-states";
+const KEY_STAY_ON_TOP: &str = "stay-on-top";
+
+const PAGE_THIS_PC: &str = "this-pc";
+const PAGE_NETWORK: &str = "network";
 
 pub struct SysmoWindow {
     window: adw::ApplicationWindow,
@@ -44,6 +51,9 @@ struct Inner {
     graphs: RefCell<Vec<LoadGraph>>,
     engine: RefCell<Option<Engine>>,
     gauges: Option<GaugeExport>,
+    cooler: CoolerPanel,
+    reporter: Option<Rc<lan::Reporter>>,
+    network_page: NetworkPage,
     frame: Cell<u32>,
     text_scaling: f64,
     /// Set by the "quit" action; otherwise closing the window only hides it
@@ -79,7 +89,19 @@ impl SysmoWindow {
 
         let header = adw::HeaderBar::new();
         header.add_css_class("flat");
-        header.set_title_widget(Some(&adw::WindowTitle::new(config::APP_NAME, "")));
+
+        // GTK 4 cannot keep its own window on top (not at all on Wayland), so
+        // this only stores the choice; the SysMo Gauges extension applies it.
+        let stay_on_top = gtk::ToggleButton::builder()
+            .icon_name("view-pin-symbolic")
+            .tooltip_text("Stay on top")
+            .build();
+        if let Some(settings) = &settings {
+            settings
+                .bind(KEY_STAY_ON_TOP, &stay_on_top, "active")
+                .build();
+        }
+        header.pack_start(&stay_on_top);
 
         let sections_box = gtk::Box::new(gtk::Orientation::Vertical, 6);
         sections_box.set_margin_top(4);
@@ -93,13 +115,51 @@ impl SysmoWindow {
             .child(&sections_box)
             .build();
 
+        // Every SysMo reports its load to the SysMo watching the Network tab.
+        let reporter = match lan::Reporter::start(lan::PORT) {
+            Ok(reporter) => Some(Rc::new(reporter)),
+            Err(e) => {
+                g_warning!("SysMo", "Network reporting is off, UDP port {}: {}", lan::PORT, e);
+                None
+            }
+        };
+        let network_page = NetworkPage::new();
+
+        // "This PC | Network" tabs in the title bar.
+        let stack = adw::ViewStack::new();
+        stack.add_titled_with_icon(&scroller, Some(PAGE_THIS_PC), "This PC", "computer-symbolic");
+        stack.add_titled_with_icon(
+            network_page.widget(),
+            Some(PAGE_NETWORK),
+            "Network",
+            "network-workgroup-symbolic",
+        );
+        let switcher = adw::ViewSwitcher::builder()
+            .stack(&stack)
+            .policy(adw::ViewSwitcherPolicy::Wide)
+            .build();
+        header.set_title_widget(Some(&switcher));
+
         let toolbar = adw::ToolbarView::new();
         toolbar.add_top_bar(&header);
-        toolbar.set_content(Some(&scroller));
+        toolbar.set_content(Some(&stack));
         window.set_content(Some(&toolbar));
 
         let expanded = |id: &str| section_states.get(id).copied().unwrap_or(true);
         let cpu = CpuSection::new(expanded("cpu"), text_scaling);
+        // DeepCool cooler button at the right of the CPU title; its panel
+        // opens above the CPU graph. Hidden when no such cooler is plugged in.
+        let cooler = CoolerPanel::new(settings.clone());
+        cpu.section.set_title_accessory(cooler.button());
+        cpu.section.add_above_graph(cooler.widget());
+        cooler.button().connect_toggled({
+            let expander = cpu.section.expander.clone();
+            move |button| {
+                if button.is_active() {
+                    expander.set_expanded(true);
+                }
+            }
+        });
         let memory = MemorySection::new(expanded("memory"), text_scaling);
         let network = NetworkSection::new(expanded("network"), text_scaling);
         let disk = DiskSection::new(expanded("disk"), text_scaling);
@@ -137,6 +197,9 @@ impl SysmoWindow {
             graphs: RefCell::new(graphs),
             engine: RefCell::new(Some(engine)),
             gauges,
+            cooler,
+            reporter,
+            network_page,
             frame: Cell::new(0),
             text_scaling,
             quitting: Cell::new(false),
@@ -150,6 +213,24 @@ impl SysmoWindow {
         ] {
             inner.track_expander(&section.id, &section.expander);
         }
+
+        // Watch the network only while the Network tab is on screen.
+        let update_watch = Rc::new({
+            let page = inner.network_page.clone();
+            let stack = stack.downgrade();
+            let window = window.downgrade();
+            move || {
+                if let (Some(stack), Some(window)) = (stack.upgrade(), window.upgrade()) {
+                    let showing = stack.visible_child_name().as_deref() == Some(PAGE_NETWORK);
+                    page.set_active(showing && window.is_visible());
+                }
+            }
+        });
+        stack.connect_visible_child_name_notify({
+            let update_watch = update_watch.clone();
+            move |_| update_watch()
+        });
+        window.connect_visible_notify(move |_| update_watch());
 
         // Deliver samples from the engine thread to the widgets.
         glib::spawn_future_local({
@@ -180,6 +261,10 @@ impl SysmoWindow {
             move |window| {
                 inner.save_window_state(window);
                 if inner.quitting.get() {
+                    // Hands the fan back to the motherboard.
+                    inner.cooler.shutdown();
+                    // Tells the nodes to stop sending.
+                    inner.network_page.set_active(false);
                     // Stops the engine process before the window goes away.
                     inner.engine.borrow_mut().take();
                     glib::Propagation::Proceed
@@ -228,6 +313,7 @@ impl Inner {
 
     fn apply(&self, readings: &Readings) {
         self.cpu.update(&readings.cpu);
+        self.cooler.update(&readings.cpu);
         if let Some(devices) = &readings.memory_devices {
             self.memory.set_devices(devices, readings.memory.mem_total);
         }
@@ -235,6 +321,10 @@ impl Inner {
         self.network.update(&readings.connections);
         self.disk.update(&readings.disks);
         self.sync_gpus(&readings.gpus);
+        if let Some(reporter) = &self.reporter {
+            let load = crate::engine::node_load(readings);
+            reporter.update(load.cpu, load.gpu, load.gpus);
+        }
         if let Some(gauges) = &self.gauges {
             gauges.publish(Self::gauge_state(readings));
         }
@@ -243,16 +333,11 @@ impl Inner {
     /// GPUs shown in the window: integrated Intel graphics are hidden
     /// whenever a discrete GPU exists.
     fn displayed_gpus(gpus: &HashMap<String, Gpu>) -> Vec<&Gpu> {
-        let has_discrete = gpus.values().any(|gpu| !GpuSection::is_integrated(gpu));
-        let mut ordered: Vec<&Gpu> = gpus
-            .values()
-            .filter(|gpu| !(has_discrete && GpuSection::is_integrated(gpu)))
-            .collect();
-        ordered.sort_by_key(|gpu| gpu.id.clone());
-        ordered
+        crate::engine::displayed_gpus(gpus)
     }
 
-    /// The five top-bar figures plus the text the gauges show on hover.
+    /// The five top-bar figures plus the text the gauges show on hover. With
+    /// several GPUs, the GPU gauges show the average of all of them.
     fn gauge_state(readings: &Readings) -> GaugeState {
         let mut state = GaugeState::default();
         let cpu = &readings.cpu;
@@ -274,30 +359,66 @@ impl Inner {
             format!("{} cores", cpu.core_usage_percent.len()),
         );
 
-        if let Some(gpu) = Self::displayed_gpus(&readings.gpus).first() {
-            state
-                .names
-                .insert("gpu".to_owned(), GpuSection::device_name(gpu));
-            if let Some(percent) = gpu.utilization_percent {
-                state.values.insert("gpu-load".to_owned(), percent as f64);
-            }
-            if let (Some(used), Some(total)) = (gpu.used_memory, gpu.total_memory) {
-                if total > 0 {
-                    state
-                        .values
-                        .insert("gpu-vram".to_owned(), used as f64 * 100.0 / total as f64);
-                    state.details.insert(
-                        "gpu-vram".to_owned(),
-                        format!("{} of {}", units::bytes_si(used), units::bytes_si(total)),
-                    );
+        let gpus = Self::displayed_gpus(&readings.gpus);
+        if let Some(name) = Self::gpu_names(&gpus) {
+            state.names.insert("gpu".to_owned(), name);
+        }
+        let load = gpus
+            .iter()
+            .filter_map(|gpu| gpu.utilization_percent.map(f64::from));
+        if let Some(percent) = average(load) {
+            state.values.insert("gpu-load".to_owned(), percent);
+        }
+        let vram = gpus
+            .iter()
+            .filter_map(|gpu| match (gpu.used_memory, gpu.total_memory) {
+                (Some(used), Some(total)) if total > 0 => Some(used as f64 * 100.0 / total as f64),
+                _ => None,
+            });
+        if let Some(percent) = average(vram) {
+            state.values.insert("gpu-vram".to_owned(), percent);
+        }
+        let temperature = gpus
+            .iter()
+            .filter_map(|gpu| gpu.temperature_c.map(f64::from));
+        if let Some(celsius) = average(temperature) {
+            state.values.insert("gpu-temp".to_owned(), celsius);
+        }
+
+        match gpus.as_slice() {
+            [gpu] => {
+                if let (Some(used), Some(total)) = (gpu.used_memory, gpu.total_memory) {
+                    if total > 0 {
+                        state.details.insert(
+                            "gpu-vram".to_owned(),
+                            format!("{} of {}", units::gigabytes(used), units::gigabytes(total)),
+                        );
+                    }
                 }
             }
-            if let Some(celsius) = gpu.temperature_c {
-                state.values.insert("gpu-temp".to_owned(), celsius as f64);
+            [] => {}
+            _ => {
+                for key in ["gpu-load", "gpu-vram", "gpu-temp"] {
+                    state.details.insert(key.to_owned(), "average".to_owned());
+                }
             }
         }
 
         state
+    }
+
+    /// "RTX 4080", "2 × RTX 4080" or "RTX 4080 + RTX 3060".
+    fn gpu_names(gpus: &[&Gpu]) -> Option<String> {
+        let names: Vec<String> = gpus
+            .iter()
+            .map(|gpu| GpuSection::device_name(gpu))
+            .collect();
+        let first = names.first()?;
+        if names.len() > 1 && names.iter().all(|name| name == first) {
+            Some(format!("{} × {first}", names.len()))
+        } else {
+            Some(names.join(" + "))
+        }
     }
 
     fn sync_gpus(&self, gpus: &HashMap<String, Gpu>) {
@@ -375,6 +496,12 @@ impl Inner {
             }
         }
     }
+}
+
+/// Mean of the readings that are present; `None` when there are none.
+fn average(values: impl Iterator<Item = f64>) -> Option<f64> {
+    let (sum, count) = values.fold((0.0, 0u32), |(sum, count), value| (sum + value, count + 1));
+    (count > 0).then(|| sum / count as f64)
 }
 
 fn load_settings() -> Option<gio::Settings> {

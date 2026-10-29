@@ -10,9 +10,17 @@ authors = ["haibac"]
 name = "sysmo"
 path = "src/main.rs"
 
+# The Network tab reporter without a window, for computers nobody logs in
+# to. Shares the engine and network code with the app; no GTK.
+[[bin]]
+name = "sysmo-reporter"
+path = "src/reporter.rs"
+test = false
+
 [dependencies]
 arrayvec = "0.7"
 async-channel = "2"
+glib = "0.22"
 rand = "0.10"
 signal-hook = "0.4"
 

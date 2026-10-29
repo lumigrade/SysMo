@@ -30,6 +30,12 @@ away, and rebuilds the one page worth having.
   GNOME System Monitor. Every section collapses and remembers its state.
 * Closing the window keeps SysMo running for the top-bar gauges;
   <kbd>Ctrl</kbd>+<kbd>Q</kbd> quits properly.
+* **DeepCool AK700 DIGITAL** (and coolers sharing its display protocol) —
+  SysMo feeds the cooler's display and can hold each fan at its own fixed
+  speed; see [DeepCool cooler and fans](#deepcool-cooler-and-fans)
+* **Network tab** — every SysMo on your local network with its live CPU and
+  GPU load, green while it works and red while it idles; see
+  [Network tab](#network-tab)
 
 ### Top bar gauges
 
@@ -43,7 +49,8 @@ colour in its faint track ring.
 
 Behind the number a glossy disc fades in from 55, blends through amber and
 orange to red by 80 and deepens towards 100, with no hard steps. Temperatures
-use the same numbers in °C.
+use the same numbers in °C. With more than one GPU, the three GPU gauges show
+the average across the GPUs.
 
 ![Gauges under load](screenshots/panel-load.png)
 
@@ -59,7 +66,7 @@ SysMo is a **fork of [Mission Center][mc]** (upstream `main`, commit
 user interface was deleted and rewritten — about 20,000 of 23,000 front-end
 lines are gone.
 
-The code SysMo inherits comes from **four upstream repositories**:
+The code SysMo inherits comes from **five upstream repositories**:
 
 | Repository | What it provides | Licence | How it is included |
 |---|---|---|---|
@@ -67,6 +74,7 @@ The code SysMo inherits comes from **four upstream repositories**:
 | [app-rummage][rummage] | Application detection; a build dependency of magpie. | MIT | nested submodule inside magpie |
 | [NVTOP][nvtop] | The GPU backend — utilisation, VRAM, temperature, power. | GPL-3.0 | downloaded, checksummed and patched by magpie's build script |
 | [GNOME System Monitor][gsm] | The graph rendering. `src/graph.rs` is a Rust and cairo port of its `load-graph.cpp` and `gsm-graph.c`, reproducing the grid, time axis, smooth scrolling and axis rounding. | GPL-2.0-or-later | ported source, not copied |
+| [deepcool-digital-linux][deepcool] | The USB packet for DeepCool cooler displays (AK700 / LQ series mapping table), used by `src/cooler.rs`. | GPL-3.0 | protocol ported, not copied |
 
 [CREDITS.md](CREDITS.md) has the exact commits, what was kept, what was
 removed, and the licence reasoning.
@@ -176,11 +184,146 @@ log out and back in, since Ubuntu adds it at login when the directory exists.
 
 | Action | Result |
 |---|---|
+| Click the pin button | keep the window on top of others (needs the top-bar extension); remembered across restarts |
 | Click a section title | collapse or expand it; remembered across restarts |
 | Close the window | window hides, gauges keep updating |
 | <kbd>Ctrl</kbd>+<kbd>Q</kbd> | quit for real, engine included |
 | Click a top-bar gauge | open or raise the window |
 | Hover a top-bar gauge | reading, device name and detail |
+| Click the cooler button at the right of the CPU title | open the DeepCool cooler panel (only shown when such a cooler is plugged in) |
+
+## Network tab
+
+The title bar switches between **This PC** (everything above) and
+**Network**: a list of every computer on your local network that runs
+SysMo, with its CPU and GPU load updated every second.
+
+<p>
+  <img src="screenshots/this-pc.png" alt="The This PC tab: CPU, memory, network, disk and two GPUs" width="45%">
+  <img src="screenshots/network-tab.png" alt="The Network tab: twelve nodes, all working" width="45%">
+</p>
+
+* **Green, Working** — its CPU or its GPU has averaged 10 % or more over the
+  last 30 seconds.
+* **Red, Idle** — both have stayed under 10 % for 30 seconds.
+* **Grey, No reply** — nothing heard for 5 seconds. After 60 seconds of
+  silence the node is removed from the list.
+
+New nodes show up within a minute, or at once with the ↻ button. Each node
+needs SysMo installed and running (it starts at login, and keeps reporting
+with its window closed), or, on computers nobody logs in to, just its
+background reporter: see [Nodes without a desktop](#nodes-without-a-desktop).
+
+**Light on the network.** Nothing scans the network. While the tab is open,
+SysMo broadcasts one small "who's there?" a minute; each SysMo answers and
+then sends one datagram of about 100 bytes a second, to the watching SysMo
+only — about 5 KB/s for 50 nodes. Leave the tab (or close the window) and
+every node stops within a second; nothing is sent while nobody watches. Only
+computers on the local network are answered.
+
+**Firewall.** SysMo uses UDP port 47917. Ubuntu's firewall is off by
+default; if you turned it on, open the port on every node:
+
+```bash
+sudo ufw allow 47917/udp
+```
+
+Nodes must be on the same network segment as the watching PC (the
+broadcast does not cross routers).
+
+### Nodes without a desktop
+
+Render and compute nodes that nobody logs in to only need
+`sysmo-reporter`: the Network tab's reporter without a window. It runs the
+same sensor engine and answers the Network tab exactly like SysMo does.
+
+One script installs it on many nodes at once, over SSH, from the computer
+that shows the Network tab. Run it in the SysMo source folder there, after
+installing SysMo (it builds first, so the nodes get exactly this version):
+
+```bash
+tools/install-nodes.sh 192.168.1.227 192.168.1.224 192.168.1.229
+```
+
+Use `user@address` when the node's user name differs. For each node it:
+
+1. logs in with this computer's SSH key (set one up with
+   `ssh-copy-id user@address` if `ssh address` asks for a password);
+2. checks the node runs the same Ubuntu release as this computer;
+3. copies the reporter and engine to `~/.local` on the node;
+4. adds a line to the node's crontab that starts the reporter at boot and
+   restarts it if it ever stops, then starts it now.
+
+If the reporter starts before a GPU's driver is ready (at boot, say), it
+looks for the GPU again after 15 s, 30 s, 1, 2, 4, 8 and 16 minutes, and
+keeps reporting the CPU meanwhile.
+
+The nodes need no sudo, compilers or internet access. Run the same command
+again to update the nodes after updating SysMo. To take it off:
+
+```bash
+tools/install-nodes.sh --remove 192.168.1.227
+```
+
+## DeepCool cooler and fans
+
+With a **DeepCool AK700 DIGITAL** plugged in over USB, a small `AK700 ▾`
+button appears at the right end of the CPU title. It opens a panel with:
+
+* **Display** — SysMo sends CPU power, temperature, load and clock speed to
+  the cooler's display once a second, in °C or °F. No other program is
+  needed. The AK620 G2, AK500 G2 and AK400 G2 DIGITAL, LQ240, LQ360 and
+  ASSASSIN IV VC VISION use the same protocol and are recognised too.
+* **Fans** — the cooler's fans are plugged into the motherboard, which sets
+  their speed. Every fan that spins gets a button (`Fan 1`, `Fan 2`, …) next
+  to the "Fans" heading; clicking one shows that fan's own live RPM,
+  **Fixed speed** switch and speed, each remembered separately. With Fixed
+  speed off the motherboard stays in charge of that fan; switched on, the fan
+  is held at 30–100 %. Fixed fans go to full speed if the CPU reaches 85 °C,
+  and every fan is handed back to the motherboard when SysMo quits.
+
+### One-time setup
+
+Linux only lets root talk to the cooler and the fan controller, so both need
+a permission rule once. From the SysMo source folder:
+
+```bash
+sudo cp data/70-sysmo.rules /etc/udev/rules.d/
+sudo udevadm control --reload
+sudo udevadm trigger --action=add --subsystem-match=hidraw --subsystem-match=hwmon
+```
+
+**Fan control also needs the motherboard's sensor driver.** Many boards
+(including the ASUS ROG STRIX B860-I) do not load it automatically. Try it,
+then check that a fan control appeared:
+
+```bash
+sudo modprobe nct6775
+ls /sys/class/hwmon/*/pwm*_enable
+```
+
+If files are listed, load the driver at every boot and apply the rule to it:
+
+```bash
+echo nct6775 | sudo tee /etc/modules-load.d/sysmo-fans.conf
+sudo udevadm trigger --action=add --subsystem-match=hwmon
+```
+
+If nothing is listed, `sudo dmesg | grep -i nct` usually says why; an "ACPI
+resource conflict" means the board firmware reserves the chip.
+
+**Optional: CPU power on the display.** The power figure shows 0 W unless
+the CPU energy counter is readable. Linux hides it on purpose (a power side
+channel, CVE-2020-8694), so this step is your call:
+
+```bash
+sudo cp data/71-sysmo-cpu-power.rules /etc/udev/rules.d/
+sudo udevadm control --reload
+sudo udevadm trigger --action=add --subsystem-match=powercap
+```
+
+If the panel says "Needs the one-time setup", a rule is missing or has not
+been applied yet; a reboot applies all of them.
 
 ## Uninstalling
 
@@ -227,6 +370,13 @@ SYSMO_DATA_DIR=build/src target/release/sysmo                        # run it
 | [`src/graph.rs`](src/graph.rs) | the GNOME System Monitor graph port |
 | [`src/engine/`](src/engine) | starts the engine, samples it over nng |
 | [`src/dbus.rs`](src/dbus.rs) | publishes the gauge figures |
+| [`src/cooler.rs`](src/cooler.rs) | DeepCool cooler display over USB HID |
+| [`src/fans.rs`](src/fans.rs) | motherboard fan headers (hwmon PWM) |
+| [`src/cooler_panel.rs`](src/cooler_panel.rs) | the cooler panel in the CPU section |
+| [`src/lan.rs`](src/lan.rs) | Network tab protocol: reporter, watcher, idle rule |
+| [`src/network_page.rs`](src/network_page.rs) | the Network tab |
+| [`src/reporter.rs`](src/reporter.rs) | `sysmo-reporter`, the Network tab reporter without a window |
+| [`tools/install-nodes.sh`](tools/install-nodes.sh) | puts `sysmo-reporter` on nodes over SSH |
 | [`extension/`](extension) | the GNOME Shell extension |
 
 Environment variables: `SYSMO_ENGINE` (engine binary), `SYSMO_DATA_DIR`
@@ -249,7 +399,8 @@ changes also need the extension disabled and enabled again.
 ## Licence
 
 GPL-3.0-or-later — see [COPYING](COPYING). SysMo inherits code from Mission
-Center, magpie, app-rummage, NVTOP and GNOME System Monitor; their authors
+Center, magpie, app-rummage, NVTOP, GNOME System Monitor and
+deepcool-digital-linux; their authors
 and licences are credited in [CREDITS.md](CREDITS.md).
 
 [mc]: https://gitlab.com/mission-center-devs/mission-center
@@ -257,3 +408,4 @@ and licences are credited in [CREDITS.md](CREDITS.md).
 [rummage]: https://gitlab.com/mission-center-devs/app-detection
 [nvtop]: https://github.com/Syllo/nvtop
 [gsm]: https://gitlab.gnome.org/GNOME/gnome-system-monitor
+[deepcool]: https://github.com/Nortank12/deepcool-digital-linux
