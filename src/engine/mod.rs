@@ -11,7 +11,7 @@ use std::collections::HashMap;
 use std::sync::mpsc;
 use std::thread::JoinHandle;
 
-use gtk::glib::g_warning;
+use glib::g_warning;
 
 mod client;
 use client::Client;
@@ -21,6 +21,43 @@ pub use magpie_types::disks::Disk;
 pub use magpie_types::gpus::Gpu;
 pub use magpie_types::memory::{Memory, MemoryDevice};
 pub use magpie_types::network::Connection;
+
+/// Integrated Intel graphics; hidden whenever a discrete GPU exists.
+pub fn is_integrated(gpu: &Gpu) -> bool {
+    gpu.vendor_id == 0x8086
+}
+
+/// The GPUs SysMo shows, in a stable order.
+pub fn displayed_gpus(gpus: &HashMap<String, Gpu>) -> Vec<&Gpu> {
+    let has_discrete = gpus.values().any(|gpu| !is_integrated(gpu));
+    let mut ordered: Vec<&Gpu> = gpus
+        .values()
+        .filter(|gpu| !(has_discrete && is_integrated(gpu)))
+        .collect();
+    ordered.sort_by_key(|gpu| gpu.id.clone());
+    ordered
+}
+
+/// What the Network tab shows for a computer.
+pub struct NodeLoad {
+    pub cpu: f32,
+    /// Average over the shown GPUs that report a load.
+    pub gpu: Option<f32>,
+    pub gpus: u32,
+}
+
+pub fn node_load(readings: &Readings) -> NodeLoad {
+    let gpus = displayed_gpus(&readings.gpus);
+    let loads: Vec<f32> = gpus
+        .iter()
+        .filter_map(|gpu| gpu.utilization_percent)
+        .collect();
+    NodeLoad {
+        cpu: readings.cpu.total_usage_percent,
+        gpu: (!loads.is_empty()).then(|| loads.iter().sum::<f32>() / loads.len() as f32),
+        gpus: gpus.len() as u32,
+    }
+}
 
 /// One snapshot of everything SysMo displays.
 pub struct Readings {
@@ -108,5 +145,58 @@ impl Drop for Engine {
         if let Some(thread) = self.thread.take() {
             let _ = thread.join();
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn gpu(id: &str, vendor_id: u32, load: Option<f32>) -> Gpu {
+        Gpu {
+            id: id.into(),
+            vendor_id,
+            utilization_percent: load,
+            ..Default::default()
+        }
+    }
+
+    fn readings(cpu: f32, gpus: Vec<Gpu>) -> Readings {
+        Readings {
+            cpu: Cpu {
+                total_usage_percent: cpu,
+                ..Default::default()
+            },
+            memory: Memory::default(),
+            memory_devices: None,
+            disks: Vec::new(),
+            connections: HashMap::new(),
+            gpus: gpus.into_iter().map(|g| (g.id.clone(), g)).collect(),
+        }
+    }
+
+    #[test]
+    fn node_load_averages_the_shown_gpus() {
+        let load = node_load(&readings(
+            12.0,
+            vec![
+                gpu("a", 0x10de, Some(90.0)),
+                gpu("b", 0x10de, Some(30.0)),
+                // Integrated Intel graphics are left out next to a discrete GPU.
+                gpu("i", 0x8086, Some(0.0)),
+            ],
+        ));
+        assert_eq!(load.cpu, 12.0);
+        assert_eq!(load.gpu, Some(60.0));
+        assert_eq!(load.gpus, 2);
+    }
+
+    #[test]
+    fn node_load_without_gpu_readings() {
+        let none = node_load(&readings(5.0, Vec::new()));
+        assert_eq!((none.gpu, none.gpus), (None, 0));
+        // An Intel GPU on its own counts.
+        let intel = node_load(&readings(5.0, vec![gpu("i", 0x8086, Some(40.0))]));
+        assert_eq!((intel.gpu, intel.gpus), (Some(40.0), 1));
     }
 }

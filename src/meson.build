@@ -35,10 +35,12 @@ engine = custom_target('sysmo-magpie',
 frontend_manifest = source_root / 'Cargo.toml'
 frontend_target_dir = source_root / 'target'
 
+# The app, and sysmo-reporter: the Network tab reporter without a window,
+# for computers nobody logs in to (see tools/install-nodes.sh).
 frontend = custom_target('sysmo',
   build_by_default: true,
   build_always_stale: true,
-  output: 'sysmo',
+  output: ['sysmo', 'sysmo-reporter'],
   console: true,
   install: true,
   install_dir: get_option('bindir'),
@@ -48,7 +50,8 @@ frontend = custom_target('sysmo',
     + ' ' + cargo.full_path() + ' build ' + cargo_profile_flag
     + ' --manifest-path ' + frontend_manifest
     + ' --target-dir ' + frontend_target_dir
-    + ' && cp ' + frontend_target_dir / cargo_profile / 'sysmo' + ' @OUTPUT@'
+    + ' && cp ' + frontend_target_dir / cargo_profile / 'sysmo' + ' @OUTPUT0@'
+    + ' && cp ' + frontend_target_dir / cargo_profile / 'sysmo-reporter' + ' @OUTPUT1@'
   ],
 )
 

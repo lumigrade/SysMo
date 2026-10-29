@@ -206,8 +206,10 @@ SysMo, with its CPU and GPU load updated every second.
 
 New nodes show up within a minute, or at once with the ↻ button. Each node
 needs SysMo installed and running (it starts at login, and keeps reporting
-with its window closed). **Share this PC's load**, at the bottom of the tab,
-turns a computer's reporting off.
+with its window closed), or, on computers nobody logs in to, just its
+background reporter: see [Nodes without a desktop](#nodes-without-a-desktop).
+**Share this PC's load**, at the bottom of the tab, turns a computer's
+reporting off.
 
 **Light on the network.** Nothing scans the network. While the tab is open,
 SysMo broadcasts one small "who's there?" a minute; each SysMo answers and
@@ -225,6 +227,36 @@ sudo ufw allow 47917/udp
 
 Nodes must be on the same network segment as the watching PC (the
 broadcast does not cross routers).
+
+### Nodes without a desktop
+
+Render and compute nodes that nobody logs in to only need
+`sysmo-reporter`: the Network tab's reporter without a window. It runs the
+same sensor engine and answers the Network tab exactly like SysMo does.
+
+One script installs it on many nodes at once, over SSH, from the computer
+that shows the Network tab. Run it in the SysMo source folder there, after
+installing SysMo (it builds first, so the nodes get exactly this version):
+
+```bash
+tools/install-nodes.sh 192.168.1.227 192.168.1.224 192.168.1.229
+```
+
+Use `user@address` when the node's user name differs. For each node it:
+
+1. logs in with this computer's SSH key (set one up with
+   `ssh-copy-id user@address` if `ssh address` asks for a password);
+2. checks the node runs the same Ubuntu release as this computer;
+3. copies the reporter and engine to `~/.local` on the node;
+4. adds a line to the node's crontab that starts the reporter at boot and
+   restarts it if it ever stops, then starts it now.
+
+The nodes need no sudo, compilers or internet access. Run the same command
+again to update the nodes after updating SysMo. To take it off:
+
+```bash
+tools/install-nodes.sh --remove 192.168.1.227
+```
 
 ## DeepCool cooler and fans
 
@@ -336,6 +368,8 @@ SYSMO_DATA_DIR=build/src target/release/sysmo                        # run it
 | [`src/cooler_panel.rs`](src/cooler_panel.rs) | the cooler panel in the CPU section |
 | [`src/lan.rs`](src/lan.rs) | Network tab protocol: reporter, watcher, idle rule |
 | [`src/network_page.rs`](src/network_page.rs) | the Network tab |
+| [`src/reporter.rs`](src/reporter.rs) | `sysmo-reporter`, the Network tab reporter without a window |
+| [`tools/install-nodes.sh`](tools/install-nodes.sh) | puts `sysmo-reporter` on nodes over SSH |
 | [`extension/`](extension) | the GNOME Shell extension |
 
 Environment variables: `SYSMO_ENGINE` (engine binary), `SYSMO_DATA_DIR`

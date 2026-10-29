@@ -321,29 +321,19 @@ impl Inner {
         self.network.update(&readings.connections);
         self.disk.update(&readings.disks);
         self.sync_gpus(&readings.gpus);
-        let state = Self::gauge_state(readings);
         if let Some(reporter) = &self.reporter {
-            reporter.update(
-                readings.cpu.total_usage_percent,
-                state.values.get("gpu-load").map(|percent| *percent as f32),
-                Self::displayed_gpus(&readings.gpus).len() as u32,
-            );
+            let load = crate::engine::node_load(readings);
+            reporter.update(load.cpu, load.gpu, load.gpus);
         }
         if let Some(gauges) = &self.gauges {
-            gauges.publish(state);
+            gauges.publish(Self::gauge_state(readings));
         }
     }
 
     /// GPUs shown in the window: integrated Intel graphics are hidden
     /// whenever a discrete GPU exists.
     fn displayed_gpus(gpus: &HashMap<String, Gpu>) -> Vec<&Gpu> {
-        let has_discrete = gpus.values().any(|gpu| !GpuSection::is_integrated(gpu));
-        let mut ordered: Vec<&Gpu> = gpus
-            .values()
-            .filter(|gpu| !(has_discrete && GpuSection::is_integrated(gpu)))
-            .collect();
-        ordered.sort_by_key(|gpu| gpu.id.clone());
-        ordered
+        crate::engine::displayed_gpus(gpus)
     }
 
     /// The five top-bar figures plus the text the gauges show on hover. With

@@ -527,10 +527,6 @@ impl GpuSection {
         format!("gpu:{}", gpu.id)
     }
 
-    pub fn is_integrated(gpu: &Gpu) -> bool {
-        gpu.vendor_id == PCI_VENDOR_INTEL
-    }
-
     /// Marketing name, or the vendor when the engine has no name for it.
     pub fn device_name(gpu: &Gpu) -> String {
         gpu.device_name
