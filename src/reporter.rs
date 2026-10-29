@@ -25,6 +25,12 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
+/// At boot the reporter can start before the GPU driver is ready, and the
+/// engine only looks for GPUs when it starts. While it reads fewer GPUs than
+/// the computer has, the engine is restarted after each of these waits (in
+/// seconds), then left alone.
+const GPU_RECHECKS: [u64; 7] = [15, 30, 60, 120, 240, 480, 960];
+
 fn main() -> ExitCode {
     // Stop cleanly on shutdown or Ctrl+C, so the engine process goes too.
     let stop = Arc::new(AtomicBool::new(false));
@@ -40,8 +46,16 @@ fn main() -> ExitCode {
         }
     };
 
+    let installed = engine::installed_gpus();
+    let mut reading = 0;
+    let mut rechecks = GPU_RECHECKS.iter().map(|secs| Duration::from_secs(*secs));
+    let mut next_check = rechecks
+        .next()
+        .filter(|_| installed > 0)
+        .map(|wait| Instant::now() + wait);
+
     let (sender, samples) = async_channel::unbounded();
-    let engine = engine::Engine::start(sender);
+    let mut engine = engine::Engine::start(sender.clone());
     while !stop.load(Ordering::Relaxed) {
         let started = Instant::now();
         engine.request_sample();
@@ -52,11 +66,28 @@ fn main() -> ExitCode {
                 Ok(readings) => {
                     let load = engine::node_load(&readings);
                     reporter.update(load.cpu, load.gpu, load.gpus);
+                    reading = engine::gpus_with_load(&readings);
                 }
                 Err(async_channel::TryRecvError::Empty) => {
                     std::thread::sleep(Duration::from_millis(50));
                 }
                 Err(async_channel::TryRecvError::Closed) => return ExitCode::FAILURE,
+            }
+        }
+
+        if next_check.is_some_and(|at| Instant::now() >= at) {
+            if reading >= installed {
+                next_check = None;
+            } else {
+                eprintln!(
+                    "sysmo-reporter: reading {reading} of {installed} GPUs, \
+                     restarting the engine to look again"
+                );
+                // The node keeps reporting its last load meanwhile.
+                drop(engine);
+                engine = engine::Engine::start(sender.clone());
+                reading = 0;
+                next_check = rechecks.next().map(|wait| Instant::now() + wait);
             }
         }
     }

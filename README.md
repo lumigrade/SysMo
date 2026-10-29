@@ -254,6 +254,10 @@ Use `user@address` when the node's user name differs. For each node it:
 4. adds a line to the node's crontab that starts the reporter at boot and
    restarts it if it ever stops, then starts it now.
 
+If the reporter starts before a GPU's driver is ready (at boot, say), it
+looks for the GPU again after 15 s, 30 s, 1, 2, 4, 8 and 16 minutes, and
+keeps reporting the CPU meanwhile.
+
 The nodes need no sudo, compilers or internet access. Run the same command
 again to update the nodes after updating SysMo. To take it off:
 
