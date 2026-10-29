@@ -21,6 +21,7 @@ mod graph;
 mod lan;
 mod network_page;
 mod sections;
+mod ssh_nodes;
 mod units;
 mod window;
 

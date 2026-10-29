@@ -45,6 +45,16 @@
       <summary>Share this computer's CPU and GPU load on the local network</summary>
       <description>Lets a SysMo showing the Network tab on another computer list this one. Off: SysMo ignores its "who's there?" messages.</description>
     </key>
+    <key name="network-ssh-hosts" type="s">
+      <default>''</default>
+      <summary>Computers without SysMo to watch over SSH</summary>
+      <description>Addresses, ranges or subnets, for example "192.168.1.100-130" or "192.168.1.0/24". SysMo logs in with the user's SSH keys while the Network tab is open.</description>
+    </key>
+    <key name="network-ssh-user" type="s">
+      <default>''</default>
+      <summary>User name for the SSH nodes</summary>
+      <description>Empty uses whatever ssh would use (~/.ssh/config, or the local user name).</description>
+    </key>
     <key name="section-states" type="as">
       <default>[]</default>
       <summary>Expanded or collapsed state of each section</summary>
