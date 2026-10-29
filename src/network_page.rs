@@ -14,6 +14,7 @@ use adw::prelude::*;
 use gtk::glib;
 
 use crate::lan::{self, Activity, Report, Watcher};
+use crate::sections::set_tooltip;
 
 /// One "who's there?" a minute finds new nodes.
 const DISCOVER_EVERY: Duration = Duration::from_secs(60);
@@ -240,8 +241,11 @@ impl Inner {
         }
         if is_new {
             self.reorder();
+            self.refresh(now);
+        } else if let Some(node) = self.nodes.borrow().get(&id) {
+            // Only this node's row; the once-a-second tick does the rest.
+            self.show(&id, node, now);
         }
-        self.refresh(now);
     }
 
     fn new_node(&self, status: &lan::Status, ip: IpAddr, now: Instant) -> Node {
@@ -297,47 +301,54 @@ impl Inner {
         }
     }
 
+    /// Bring one node's row up to date.
+    fn show(&self, id: &str, node: &Node, now: Instant) -> State {
+        let state = node.state(now);
+        let status = &node.status;
+        node.row.set_title(&status.name);
+        node.row.set_subtitle(&if id == self.own_id {
+            format!("This PC · {}", node.ip)
+        } else {
+            node.ip.to_string()
+        });
+        node.cpu.set_text(&format!("CPU {:.0}%", status.cpu));
+        node.gpu.set_text(&match status.gpu {
+            Some(gpu) => format!("GPU {gpu:.0}%"),
+            None => "GPU –".to_owned(),
+        });
+        set_tooltip(
+            &node.gpu,
+            match status.gpus {
+                0 => Some("No GPU reading"),
+                1 => None,
+                _ => Some("Average of its GPUs"),
+            },
+        );
+        let (class, text) = match state {
+            State::Working => ("node-working", "Working"),
+            State::Idle => ("node-idle", "Idle"),
+            State::NoReply => ("node-no-reply", "No reply"),
+        };
+        for other in ["node-working", "node-idle", "node-no-reply"] {
+            if other != class {
+                node.row.remove_css_class(other);
+            }
+        }
+        node.row.add_css_class(class);
+        node.badge.set_text(text);
+        state
+    }
+
     /// Bring every row and the summary up to date.
     fn refresh(&self, now: Instant) {
         let nodes = self.nodes.borrow();
         let (mut working, mut idle, mut no_reply) = (0, 0, 0);
         for (id, node) in nodes.iter() {
-            let state = node.state(now);
-            match state {
+            match self.show(id, node, now) {
                 State::Working => working += 1,
                 State::Idle => idle += 1,
                 State::NoReply => no_reply += 1,
             }
-
-            let status = &node.status;
-            node.row.set_title(&status.name);
-            node.row.set_subtitle(&if *id == self.own_id {
-                format!("This PC · {}", node.ip)
-            } else {
-                node.ip.to_string()
-            });
-            node.cpu.set_text(&format!("CPU {:.0}%", status.cpu));
-            node.gpu.set_text(&match status.gpu {
-                Some(gpu) => format!("GPU {gpu:.0}%"),
-                None => "GPU –".to_owned(),
-            });
-            node.gpu.set_tooltip_text(match status.gpus {
-                0 => Some("No GPU reading"),
-                1 => None,
-                _ => Some("Average of its GPUs"),
-            });
-            let (class, text) = match state {
-                State::Working => ("node-working", "Working"),
-                State::Idle => ("node-idle", "Idle"),
-                State::NoReply => ("node-no-reply", "No reply"),
-            };
-            for other in ["node-working", "node-idle", "node-no-reply"] {
-                if other != class {
-                    node.row.remove_css_class(other);
-                }
-            }
-            node.row.add_css_class(class);
-            node.badge.set_text(text);
         }
 
         self.searching_row.set_visible(nodes.is_empty());

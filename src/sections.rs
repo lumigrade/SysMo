@@ -35,6 +35,14 @@ pub const TEMPERATURE_COLOR: &str = "#ffffff";
 /// CPU and GPU loads above this are shown as a red badge.
 const HIGH_LOAD_PERCENT: f32 = 80.0;
 
+/// Set a tooltip only when its text changes. Setting one makes GTK look up
+/// the mouse pointer, and on X11 that waits for the display server each time.
+pub fn set_tooltip(widget: &impl IsA<gtk::Widget>, text: Option<&str>) {
+    if widget.tooltip_text().as_deref() != text {
+        widget.set_tooltip_text(text);
+    }
+}
+
 const PCI_VENDOR_INTEL: u32 = 0x8086;
 const PCI_VENDOR_NVIDIA: u32 = 0x10de;
 const PCI_VENDOR_AMD: u32 = 0x1002;
@@ -388,19 +396,23 @@ impl MemorySection {
             units::bytes_si(used),
             units::percent(fraction)
         ));
-        self.memory
-            .set_tooltip_text(Some(&format!("of {}", units::bytes_si(total))));
+        set_tooltip(
+            &self.memory,
+            Some(&format!("of {}", units::bytes_si(total))),
+        );
         if swap_total > 0 {
             self.swap.set_text(&format!(
                 "{} ({})",
                 units::bytes_si(swap_used),
                 units::percent(swap_fraction)
             ));
-            self.swap
-                .set_tooltip_text(Some(&format!("of {}", units::bytes_si(swap_total))));
+            set_tooltip(
+                &self.swap,
+                Some(&format!("of {}", units::bytes_si(swap_total))),
+            );
         } else {
             self.swap.set_text("not available");
-            self.swap.set_tooltip_text(None);
+            set_tooltip(&self.swap, None);
         }
     }
 }
@@ -586,15 +598,18 @@ impl GpuSection {
                 // GB only; the percentage lives in the tooltip to keep the
                 // legend narrow.
                 self.vram.set_text(&units::gigabytes(used));
-                self.vram.set_tooltip_text(Some(&format!(
-                    "of {} ({})",
-                    units::gigabytes(total),
-                    units::percent(used as f64 / total as f64)
-                )));
+                set_tooltip(
+                    &self.vram,
+                    Some(&format!(
+                        "of {} ({})",
+                        units::gigabytes(total),
+                        units::percent(used as f64 / total as f64)
+                    )),
+                );
             }
             _ => {
                 self.vram.set_text(NOT_AVAILABLE);
-                self.vram.set_tooltip_text(None);
+                set_tooltip(&self.vram, None);
             }
         }
         self.temperature
