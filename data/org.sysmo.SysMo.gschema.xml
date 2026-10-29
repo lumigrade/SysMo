@@ -40,11 +40,6 @@
       <default>''</default>
       <summary>Fan shown in the cooler panel</summary>
     </key>
-    <key name="network-share" type="b">
-      <default>true</default>
-      <summary>Share this computer's CPU and GPU load on the local network</summary>
-      <description>Lets a SysMo showing the Network tab on another computer list this one. Off: SysMo ignores its "who's there?" messages.</description>
-    </key>
     <key name="section-states" type="as">
       <default>[]</default>
       <summary>Expanded or collapsed state of each section</summary>

@@ -193,7 +193,6 @@ pub struct Reporter {
     #[cfg(test)]
     port: u16,
     load: Arc<Mutex<Option<Load>>>,
-    enabled: Arc<AtomicBool>,
     stop: Arc<AtomicBool>,
 }
 
@@ -205,7 +204,6 @@ impl Reporter {
         let port = socket.local_addr()?.port();
 
         let load = Arc::new(Mutex::new(None::<Load>));
-        let enabled = Arc::new(AtomicBool::new(true));
         let stop = Arc::new(AtomicBool::new(false));
         let id = node_id();
         let name = host_name();
@@ -213,7 +211,7 @@ impl Reporter {
         std::thread::Builder::new()
             .name("sysmo-reporter".into())
             .spawn({
-                let (load, enabled, stop) = (load.clone(), enabled.clone(), stop.clone());
+                let (load, stop) = (load.clone(), stop.clone());
                 move || {
                     let status = || {
                         let load = (*load.lock().unwrap())?;
@@ -233,15 +231,12 @@ impl Reporter {
                     let mut buffer = [0u8; MAX_DATAGRAM];
 
                     while !stop.load(Ordering::Relaxed) {
-                        let received = socket.recv_from(&mut buffer);
-                        // Read after the wait, so switching off applies at once.
-                        let on = enabled.load(Ordering::Relaxed);
-                        if let Ok((length, from)) = received {
+                        if let Ok((length, from)) = socket.recv_from(&mut buffer) {
                             let message = std::str::from_utf8(&buffer[..length])
                                 .ok()
                                 .and_then(Message::decode);
                             match message {
-                                Some(Message::Discover { lease }) if on && is_local(from.ip()) => {
+                                Some(Message::Discover { lease }) if is_local(from.ip()) => {
                                     if watchers.len() < MAX_WATCHERS || watchers.contains_key(&from)
                                     {
                                         watchers
@@ -263,9 +258,7 @@ impl Reporter {
                         if now >= next_send {
                             next_send = now + Duration::from_secs(1);
                             watchers.retain(|_, until| *until > now);
-                            if !on {
-                                watchers.clear();
-                            } else if let Some(status) = status() {
+                            if let Some(status) = status() {
                                 for watcher in watchers.keys() {
                                     let _ = socket.send_to(status.as_bytes(), watcher);
                                 }
@@ -279,7 +272,6 @@ impl Reporter {
             #[cfg(test)]
             port,
             load,
-            enabled,
             stop,
         })
     }
@@ -292,11 +284,6 @@ impl Reporter {
     /// The latest reading, sent with the next datagram.
     pub fn update(&self, cpu: f32, gpu: Option<f32>, gpus: u32) {
         *self.load.lock().unwrap() = Some(Load { cpu, gpu, gpus });
-    }
-
-    /// Off: ignore watchers and stop sending.
-    pub fn set_enabled(&self, enabled: bool) {
-        self.enabled.store(enabled, Ordering::Relaxed);
     }
 }
 
@@ -565,14 +552,6 @@ mod tests {
         assert!(
             receive(Duration::from_millis(1500)).is_none(),
             "kept sending after BYE"
-        );
-
-        // Switched off, it ignores watchers.
-        reporter.set_enabled(false);
-        watcher.discover();
-        assert!(
-            receive(Duration::from_millis(1500)).is_none(),
-            "answered while off"
         );
     }
 }

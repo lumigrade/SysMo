@@ -11,11 +11,9 @@ use std::rc::{Rc, Weak};
 use std::time::{Duration, Instant};
 
 use adw::prelude::*;
-use gtk::{gio, glib};
+use gtk::glib;
 
-use crate::lan::{self, Activity, Report, Reporter, Watcher};
-
-const KEY_SHARE: &str = "network-share";
+use crate::lan::{self, Activity, Report, Watcher};
 
 /// One "who's there?" a minute finds new nodes.
 const DISCOVER_EVERY: Duration = Duration::from_secs(60);
@@ -70,7 +68,7 @@ struct Inner {
 }
 
 impl NetworkPage {
-    pub fn new(settings: Option<gio::Settings>, reporter: Option<Rc<Reporter>>) -> Self {
+    pub fn new() -> Self {
         let scan_button = gtk::Button::builder()
             .icon_name("view-refresh-symbolic")
             .tooltip_text("Look for nodes now")
@@ -80,8 +78,8 @@ impl NetworkPage {
         let searching_row = adw::ActionRow::builder()
             .title("Looking for SysMo on this network…")
             .subtitle(format!(
-                "Nodes appear within a minute. Each needs SysMo running with \
-                 sharing on, and UDP port {} open.",
+                "Nodes appear within a minute. Each needs SysMo or its node \
+                 reporter running, and UDP port {} open.",
                 lan::PORT
             ))
             .build();
@@ -89,39 +87,12 @@ impl NetworkPage {
         nodes_group.set_header_suffix(Some(&scan_button));
         nodes_group.add(&searching_row);
 
-        let share_row = adw::SwitchRow::builder()
-            .title("Share this PC's load")
-            .subtitle("Other SysMo on this network can see its CPU and GPU load")
-            .active(true)
-            .build();
-        let share_group = adw::PreferencesGroup::builder().title("This PC").build();
-        share_group.add(&share_row);
-        match &reporter {
-            Some(reporter) => {
-                if let Some(settings) = &settings {
-                    settings.bind(KEY_SHARE, &share_row, "active").build();
-                }
-                reporter.set_enabled(share_row.is_active());
-                let reporter = reporter.clone();
-                share_row.connect_active_notify(move |row| reporter.set_enabled(row.is_active()));
-            }
-            None => {
-                share_row.set_active(false);
-                share_row.set_sensitive(false);
-                share_row.set_subtitle(&format!(
-                    "UDP port {} is in use by another program, so this PC can't be shared",
-                    lan::PORT
-                ));
-            }
-        }
-
         let column = gtk::Box::new(gtk::Orientation::Vertical, 18);
         column.set_margin_top(8);
         column.set_margin_bottom(12);
         column.set_margin_start(12);
         column.set_margin_end(12);
         column.append(&nodes_group);
-        column.append(&share_group);
         let root = gtk::ScrolledWindow::builder()
             .hscrollbar_policy(gtk::PolicyType::Never)
             .vexpand(true)

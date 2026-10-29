@@ -208,8 +208,6 @@ New nodes show up within a minute, or at once with the ↻ button. Each node
 needs SysMo installed and running (it starts at login, and keeps reporting
 with its window closed), or, on computers nobody logs in to, just its
 background reporter: see [Nodes without a desktop](#nodes-without-a-desktop).
-**Share this PC's load**, at the bottom of the tab, turns a computer's
-reporting off.
 
 **Light on the network.** Nothing scans the network. While the tab is open,
 SysMo broadcasts one small "who's there?" a minute; each SysMo answers and

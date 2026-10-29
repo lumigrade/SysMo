@@ -123,7 +123,7 @@ impl SysmoWindow {
                 None
             }
         };
-        let network_page = NetworkPage::new(settings.clone(), reporter.clone());
+        let network_page = NetworkPage::new();
 
         // "This PC | Network" tabs in the title bar.
         let stack = adw::ViewStack::new();
