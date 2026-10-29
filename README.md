@@ -198,6 +198,11 @@ The title bar switches between **This PC** (everything above) and
 **Network**: a list of every computer on your local network that runs
 SysMo, with its CPU and GPU load updated every second.
 
+<p>
+  <img src="screenshots/this-pc.png" alt="The This PC tab: CPU, memory, network, disk and two GPUs" width="45%">
+  <img src="screenshots/network-tab.png" alt="The Network tab: twelve nodes, all working" width="45%">
+</p>
+
 * **Green, Working** — its CPU or its GPU has averaged 10 % or more over the
   last 30 seconds.
 * **Red, Idle** — both have stayed under 10 % for 30 seconds.
