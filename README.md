@@ -33,6 +33,9 @@ away, and rebuilds the one page worth having.
 * **DeepCool AK700 DIGITAL** (and coolers sharing its display protocol) —
   SysMo feeds the cooler's display and can hold each fan at its own fixed
   speed; see [DeepCool cooler and fans](#deepcool-cooler-and-fans)
+* **Network tab** — every SysMo on your local network with its live CPU and
+  GPU load, green while it works and red while it idles; see
+  [Network tab](#network-tab)
 
 ### Top bar gauges
 
@@ -189,6 +192,40 @@ log out and back in, since Ubuntu adds it at login when the directory exists.
 | Hover a top-bar gauge | reading, device name and detail |
 | Click the cooler button at the right of the CPU title | open the DeepCool cooler panel (only shown when such a cooler is plugged in) |
 
+## Network tab
+
+The title bar switches between **This PC** (everything above) and
+**Network**: a list of every computer on your local network that runs
+SysMo, with its CPU and GPU load updated every second.
+
+* **Green, Working** — its CPU or its GPU has averaged 10 % or more over the
+  last 30 seconds.
+* **Red, Idle** — both have stayed under 10 % for 30 seconds.
+* **Grey, No reply** — nothing heard for 5 seconds. After 60 seconds of
+  silence the node is removed from the list.
+
+New nodes show up within a minute, or at once with the ↻ button. Each node
+needs SysMo installed and running (it starts at login, and keeps reporting
+with its window closed). **Share this PC's load**, at the bottom of the tab,
+turns a computer's reporting off.
+
+**Light on the network.** Nothing scans the network. While the tab is open,
+SysMo broadcasts one small "who's there?" a minute; each SysMo answers and
+then sends one datagram of about 100 bytes a second, to the watching SysMo
+only — about 5 KB/s for 50 nodes. Leave the tab (or close the window) and
+every node stops within a second; nothing is sent while nobody watches. Only
+computers on the local network are answered.
+
+**Firewall.** SysMo uses UDP port 47917. Ubuntu's firewall is off by
+default; if you turned it on, open the port on every node:
+
+```bash
+sudo ufw allow 47917/udp
+```
+
+Nodes must be on the same network segment as the watching PC (the
+broadcast does not cross routers).
+
 ## DeepCool cooler and fans
 
 With a **DeepCool AK700 DIGITAL** plugged in over USB, a small `AK700 ▾`
@@ -297,6 +334,8 @@ SYSMO_DATA_DIR=build/src target/release/sysmo                        # run it
 | [`src/cooler.rs`](src/cooler.rs) | DeepCool cooler display over USB HID |
 | [`src/fans.rs`](src/fans.rs) | motherboard fan headers (hwmon PWM) |
 | [`src/cooler_panel.rs`](src/cooler_panel.rs) | the cooler panel in the CPU section |
+| [`src/lan.rs`](src/lan.rs) | Network tab protocol: reporter, watcher, idle rule |
+| [`src/network_page.rs`](src/network_page.rs) | the Network tab |
 | [`extension/`](extension) | the GNOME Shell extension |
 
 Environment variables: `SYSMO_ENGINE` (engine binary), `SYSMO_DATA_DIR`

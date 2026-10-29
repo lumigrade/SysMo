@@ -18,6 +18,8 @@ use crate::cooler_panel::CoolerPanel;
 use crate::dbus::{GaugeExport, GaugeState};
 use crate::engine::{Engine, Gpu, Readings};
 use crate::graph::{LoadGraph, FRAMES_PER_UNIT, UPDATE_INTERVAL_MS};
+use crate::lan;
+use crate::network_page::NetworkPage;
 use crate::sections::{
     clean_cpu_name, CpuSection, DiskSection, GpuSection, MemorySection, NetworkSection,
 };
@@ -28,6 +30,9 @@ const KEY_WINDOW_HEIGHT: &str = "window-height";
 const KEY_WINDOW_MAXIMIZED: &str = "window-maximized";
 const KEY_SECTION_STATES: &str = "section-states";
 const KEY_STAY_ON_TOP: &str = "stay-on-top";
+
+const PAGE_THIS_PC: &str = "this-pc";
+const PAGE_NETWORK: &str = "network";
 
 pub struct SysmoWindow {
     window: adw::ApplicationWindow,
@@ -47,6 +52,8 @@ struct Inner {
     engine: RefCell<Option<Engine>>,
     gauges: Option<GaugeExport>,
     cooler: CoolerPanel,
+    reporter: Option<Rc<lan::Reporter>>,
+    network_page: NetworkPage,
     frame: Cell<u32>,
     text_scaling: f64,
     /// Set by the "quit" action; otherwise closing the window only hides it
@@ -82,7 +89,6 @@ impl SysmoWindow {
 
         let header = adw::HeaderBar::new();
         header.add_css_class("flat");
-        header.set_title_widget(Some(&adw::WindowTitle::new(config::APP_NAME, "")));
 
         // GTK 4 cannot keep its own window on top (not at all on Wayland), so
         // this only stores the choice; the SysMo Gauges extension applies it.
@@ -109,9 +115,34 @@ impl SysmoWindow {
             .child(&sections_box)
             .build();
 
+        // Every SysMo reports its load to the SysMo watching the Network tab.
+        let reporter = match lan::Reporter::start(lan::PORT) {
+            Ok(reporter) => Some(Rc::new(reporter)),
+            Err(e) => {
+                g_warning!("SysMo", "Network reporting is off, UDP port {}: {}", lan::PORT, e);
+                None
+            }
+        };
+        let network_page = NetworkPage::new(settings.clone(), reporter.clone());
+
+        // "This PC | Network" tabs in the title bar.
+        let stack = adw::ViewStack::new();
+        stack.add_titled_with_icon(&scroller, Some(PAGE_THIS_PC), "This PC", "computer-symbolic");
+        stack.add_titled_with_icon(
+            network_page.widget(),
+            Some(PAGE_NETWORK),
+            "Network",
+            "network-workgroup-symbolic",
+        );
+        let switcher = adw::ViewSwitcher::builder()
+            .stack(&stack)
+            .policy(adw::ViewSwitcherPolicy::Wide)
+            .build();
+        header.set_title_widget(Some(&switcher));
+
         let toolbar = adw::ToolbarView::new();
         toolbar.add_top_bar(&header);
-        toolbar.set_content(Some(&scroller));
+        toolbar.set_content(Some(&stack));
         window.set_content(Some(&toolbar));
 
         let expanded = |id: &str| section_states.get(id).copied().unwrap_or(true);
@@ -167,6 +198,8 @@ impl SysmoWindow {
             engine: RefCell::new(Some(engine)),
             gauges,
             cooler,
+            reporter,
+            network_page,
             frame: Cell::new(0),
             text_scaling,
             quitting: Cell::new(false),
@@ -180,6 +213,24 @@ impl SysmoWindow {
         ] {
             inner.track_expander(&section.id, &section.expander);
         }
+
+        // Watch the network only while the Network tab is on screen.
+        let update_watch = Rc::new({
+            let page = inner.network_page.clone();
+            let stack = stack.downgrade();
+            let window = window.downgrade();
+            move || {
+                if let (Some(stack), Some(window)) = (stack.upgrade(), window.upgrade()) {
+                    let showing = stack.visible_child_name().as_deref() == Some(PAGE_NETWORK);
+                    page.set_active(showing && window.is_visible());
+                }
+            }
+        });
+        stack.connect_visible_child_name_notify({
+            let update_watch = update_watch.clone();
+            move |_| update_watch()
+        });
+        window.connect_visible_notify(move |_| update_watch());
 
         // Deliver samples from the engine thread to the widgets.
         glib::spawn_future_local({
@@ -212,6 +263,8 @@ impl SysmoWindow {
                 if inner.quitting.get() {
                     // Hands the fan back to the motherboard.
                     inner.cooler.shutdown();
+                    // Tells the nodes to stop sending.
+                    inner.network_page.set_active(false);
                     // Stops the engine process before the window goes away.
                     inner.engine.borrow_mut().take();
                     glib::Propagation::Proceed
@@ -268,8 +321,16 @@ impl Inner {
         self.network.update(&readings.connections);
         self.disk.update(&readings.disks);
         self.sync_gpus(&readings.gpus);
+        let state = Self::gauge_state(readings);
+        if let Some(reporter) = &self.reporter {
+            reporter.update(
+                readings.cpu.total_usage_percent,
+                state.values.get("gpu-load").map(|percent| *percent as f32),
+                Self::displayed_gpus(&readings.gpus).len() as u32,
+            );
+        }
         if let Some(gauges) = &self.gauges {
-            gauges.publish(Self::gauge_state(readings));
+            gauges.publish(state);
         }
     }
 
