@@ -216,32 +216,6 @@ only — about 5 KB/s for 50 nodes. Leave the tab (or close the window) and
 every node stops within a second; nothing is sent while nobody watches. Only
 computers on the local network are answered.
 
-### Nodes without SysMo (over SSH)
-
-Computers you do not want to install SysMo on can be watched over SSH
-instead, as long as this PC can already log in to them with a key (try
-`ssh 192.168.1.101`: no password prompt). Under **Nodes without SysMo** enter
-their addresses, for example `192.168.1.100-130`, `192.168.1.0/24` or a list
-like `192.168.1.5, 192.168.1.9`, and press ✓. An optional **SSH user** is
-used for all of them; leave it blank to use `~/.ssh/config` or your own user
-name.
-
-While the Network tab is open, SysMo keeps one SSH connection to each
-address and runs a small read-only loop there that prints the CPU counters
-(`/proc/stat`) and the NVIDIA GPU load (`nvidia-smi`) once a second. Nothing
-is installed or changed on the node, and the loop ends as soon as the
-connection closes. That costs about 10 KB to log in and then about 200
-bytes a second per node — roughly 6 KB/s for 30 nodes.
-
-* A node that does not answer is not listed and is tried again every
-  60 seconds, so switching it on makes it appear within a minute.
-* A node that answers but refuses the login shows a grey **No access** row
-  with the reason, and is tried again every 10 minutes (not every minute, so
-  its logs do not fill up with failed logins). "Unknown host key" means this
-  PC has never connected to it: run `ssh <address>` once from a terminal and
-  accept the key.
-* A computer that runs SysMo and is also in the list appears only once.
-
 **Firewall.** SysMo uses UDP port 47917. Ubuntu's firewall is off by
 default; if you turned it on, open the port on every node:
 
@@ -362,7 +336,6 @@ SYSMO_DATA_DIR=build/src target/release/sysmo                        # run it
 | [`src/cooler_panel.rs`](src/cooler_panel.rs) | the cooler panel in the CPU section |
 | [`src/lan.rs`](src/lan.rs) | Network tab protocol: reporter, watcher, idle rule |
 | [`src/network_page.rs`](src/network_page.rs) | the Network tab |
-| [`src/ssh_nodes.rs`](src/ssh_nodes.rs) | Network tab nodes read over SSH |
 | [`extension/`](extension) | the GNOME Shell extension |
 
 Environment variables: `SYSMO_ENGINE` (engine binary), `SYSMO_DATA_DIR`
