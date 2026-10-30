@@ -322,8 +322,7 @@ impl Inner {
         self.disk.update(&readings.disks);
         self.sync_gpus(&readings.gpus);
         if let Some(reporter) = &self.reporter {
-            let load = crate::engine::node_load(readings);
-            reporter.update(load.cpu, load.gpu, load.gpus);
+            reporter.update(crate::engine::node_load(readings));
         }
         if let Some(gauges) = &self.gauges {
             gauges.publish(Self::gauge_state(readings));

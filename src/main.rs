@@ -18,6 +18,7 @@ mod dbus;
 mod engine;
 mod fans;
 mod graph;
+mod icons;
 mod lan;
 mod network_page;
 mod sections;
