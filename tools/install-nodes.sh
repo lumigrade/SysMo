@@ -14,10 +14,11 @@
 # that starts the reporter at boot (and again if it ever stops), and starts
 # it now. The nodes need no sudo, compilers or internet access.
 #
-# Computers with the SysMo desktop app are skipped: the app reports by
-# itself. If a node reporter is found there anyway, it is taken off (it would
-# hold the app's network port) and the app restarted; the engine files the
-# app shares are never deleted, with or without --remove.
+# A computer whose SysMo desktop app already reports (holds the Network
+# tab's UDP port) is skipped, and a node reporter found there anyway is taken
+# off. Anywhere else, including where the app is installed but stopped or too
+# old to report, the node reporter goes on as usual. The engine files a
+# desktop app shares are never deleted, with or without --remove.
 #
 # SPDX-License-Identifier: GPL-3.0-or-later
 
@@ -38,7 +39,7 @@ SSH="ssh -o BatchMode=yes -o ConnectTimeout=10"
 
 # Runs on the node (read from stdin, so no pattern below ever matches its own
 # command line). Stops any running reporter, then installs or removes. Mode
-# "desktop": the computer has the SysMo desktop app.
+# "skip": the computer's SysMo desktop app already reports.
 node_script() {
     cat <<'EOF'
 set -eu
@@ -46,20 +47,12 @@ mode=$1
 loop='while :; do $HOME/.local/bin/sysmo-reporter; sleep 5; done'
 app=$HOME/.local/bin/sysmo
 [ -e "$app" ] || app=$(command -v sysmo || echo "$app")
-desktop=false
-if [ -e "$app" ] || pgrep -x sysmo >/dev/null; then
-    desktop=true
-fi
 reporter=false
 if pgrep -x sysmo-reporter >/dev/null || crontab -l 2>/dev/null | grep -q sysmo-reporter; then
     reporter=true
 fi
-if [ "$desktop" = true ] && [ "$reporter" = false ]; then
-    if [ "$mode" = remove ]; then
-        echo "has the SysMo desktop app and no node reporter: nothing to remove"
-    else
-        echo "skipped: has the SysMo desktop app, which reports by itself"
-    fi
+if [ "$mode" = skip ] && [ "$reporter" = false ]; then
+    echo "skipped: its SysMo desktop app reports by itself"
     exit 0
 fi
 # Stop the restart loop first, then the reporter (which stops its engine),
@@ -76,30 +69,18 @@ if pgrep -x sysmo-reporter >/dev/null; then
     pkill -x sysmo-magpie 2>/dev/null || true
 fi
 crontab -l 2>/dev/null | grep -v 'sysmo-reporter' > "$HOME/.sysmo-crontab" || true
-if [ "$mode" = remove ] || [ "$desktop" = true ]; then
+if [ "$mode" != install ]; then
     crontab "$HOME/.sysmo-crontab"
     rm -f "$HOME/.sysmo-crontab"
-    if [ "$desktop" = false ]; then
+    if [ "$mode" = skip ]; then
+        echo "skipped: its SysMo desktop app reports by itself (removed a spare node reporter)"
+    elif [ -e "$app" ]; then
+        # A desktop app shares the engine and its data: they stay.
+        echo "removed (kept the files the SysMo desktop app here shares)"
+    else
         rm -f "$HOME/.local/bin/sysmo-reporter" "$HOME/.local/bin/sysmo-magpie"
         rm -rf "$HOME/.local/share/sysmo"
         echo "removed"
-        exit 0
-    fi
-    # The desktop app shares the engine and its data, so they stay. It only
-    # claims its network port when it starts: restart it to take the port back.
-    note="has the SysMo desktop app: removed a node reporter that blocked it"
-    if pgrep -x sysmo >/dev/null; then
-        pkill -x sysmo 2>/dev/null || true
-        sleep 3
-        pkill -KILL -x sysmo 2>/dev/null || true
-        sleep 1
-        if systemd-run --user --collect --quiet "$app" 2>/dev/null; then
-            echo "$note, restarted SysMo"
-        else
-            echo "$note; start SysMo there again"
-        fi
-    else
-        echo "$note"
     fi
     exit 0
 fi
@@ -136,16 +117,30 @@ fi
 EOF
 }
 
+# Prints the node's release, e.g. "Ubuntu 24.04", then "app-reports" when a
+# running SysMo desktop app already holds the Network tab's UDP port 47917
+# (hex BB2D): the kernel's socket table names the socket, and the app's open
+# files show whether it is the app's.
+probe_script() {
+    cat <<'EOF'
+. /etc/os-release && echo "$NAME $VERSION_ID"
+inodes=$(awk '$2 ~ /:BB2D$/ { print $10 }' /proc/net/udp /proc/net/udp6 2>/dev/null)
+for pid in $(pgrep -x sysmo); do
+    for inode in $inodes; do
+        if readlink "/proc/$pid/fd/"* 2>/dev/null | grep -qx "socket:\[$inode\]"; then
+            echo app-reports
+            exit 0
+        fi
+    done
+done
+EOF
+}
+
 install_node() {
     host=$1
-    # Its release, e.g. "Ubuntu 24.04" (point updates such as 24.04.4 and
-    # 24.04.5 share the same system libraries), and whether it has the SysMo
-    # desktop app.
-    # shellcheck disable=SC2016 # expands on the node
-    info=$($SSH "$host" '. /etc/os-release && echo "$NAME $VERSION_ID"
-        if [ -e "$HOME/.local/bin/sysmo" ] || command -v sysmo >/dev/null || pgrep -x sysmo >/dev/null; then
-            echo desktop
-        fi' 2>/dev/null) || {
+    # Its release (point updates such as 24.04.4 and 24.04.5 share the same
+    # system libraries), and whether its SysMo desktop app already reports.
+    info=$(probe_script | $SSH "$host" sh -s 2>/dev/null) || {
         echo "can't log in with this computer's SSH key (try: ssh $host)"
         return 1
     }
@@ -154,9 +149,9 @@ install_node() {
         node_script | $SSH "$host" 'sh -s remove'
         return
     fi
-    # Copy nothing to a computer with the desktop app.
-    if [ "$(printf '%s\n' "$info" | sed -n 2p)" = desktop ]; then
-        node_script | $SSH "$host" 'sh -s desktop'
+    # Copy nothing where the desktop app already reports.
+    if [ "$(printf '%s\n' "$info" | sed -n 2p)" = app-reports ]; then
+        node_script | $SSH "$host" 'sh -s skip'
         return
     fi
     if [ "$there" != "$here" ]; then

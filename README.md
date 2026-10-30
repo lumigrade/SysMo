@@ -273,11 +273,12 @@ again to update the nodes after updating SysMo. To take it off:
 tools/install-nodes.sh --remove 192.168.1.227
 ```
 
-Computers with the SysMo desktop app are skipped, so an address range may
-include them: the app reports by itself, and a second reporter would hold its
-network port. If one is found there anyway, the script takes it off and
-restarts SysMo. It never deletes the engine files the desktop app shares,
-with or without `--remove`.
+An address range may include computers with the SysMo desktop app. Where the
+app already reports (it holds the Network tab's UDP port), the computer is
+skipped, and a node reporter found there anyway is taken off. Where it does
+not (the app is stopped, or too old to report), the node reporter goes on as
+usual and the app is left alone. The engine files a desktop app shares are
+never deleted, with or without `--remove`.
 
 ## DeepCool cooler and fans
 
