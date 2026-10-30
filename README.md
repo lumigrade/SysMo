@@ -195,19 +195,23 @@ log out and back in, since Ubuntu adds it at login when the directory exists.
 ## Network tab
 
 The title bar switches between **This PC** (everything above) and
-**Network**: a list of every computer on your local network that runs
-SysMo, with its CPU and GPU load updated every second.
+**Network**: every computer on your local network that runs SysMo, as slim
+rows in two columns, updated every second. A row shows the computer's
+number (the last part of its IP address, such as `.223`), its CPU load in
+blue and its GPU load in yellow (the average, on computers with several
+GPUs). Hover a row for the computer's name and full address; this PC has a
+white outline.
 
 <p>
   <img src="screenshots/this-pc.png" alt="The This PC tab: CPU, memory, network, disk and two GPUs" width="45%">
   <img src="screenshots/network-tab.png" alt="The Network tab: twelve nodes, all working" width="45%">
 </p>
 
-* **Green, Working** — its CPU or its GPU has averaged 10 % or more over the
-  last 30 seconds.
-* **Red, Idle** — both have stayed under 10 % for 30 seconds.
-* **Grey, No reply** — nothing heard for 5 seconds. After 60 seconds of
-  silence the node is removed from the list.
+* **Green** (working) — its CPU or its GPU has averaged 10 % or more over
+  the last 30 seconds.
+* **Red** (idle) — both have stayed under 10 % for 30 seconds.
+* **Dimmed** (not replying) — nothing heard for 5 seconds. After 60 seconds
+  of silence the node is removed from the list.
 
 New nodes show up within a minute, or at once with the ↻ button. Each node
 needs SysMo installed and running (it starts at login, and keeps reporting

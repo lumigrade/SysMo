@@ -1,5 +1,7 @@
-/* network_page.rs - the Network tab: every SysMo on the local network with
- * its CPU and GPU load, green while it works and red while it idles.
+/* network_page.rs - the Network tab: every SysMo on the local network, one
+ * slim row each in two columns: its number (the last part of its address),
+ * CPU load in blue and GPU load in yellow, on green while it works and red
+ * while it idles.
  *
  * SPDX-License-Identifier: GPL-3.0-or-later
  */
@@ -35,10 +37,10 @@ struct Node {
     ip: IpAddr,
     last_seen: Instant,
     activity: Activity,
-    row: adw::ActionRow,
+    row: gtk::Box,
+    number: gtk::Label,
     cpu: gtk::Label,
     gpu: gtk::Label,
-    badge: gtk::Label,
 }
 
 impl Node {
@@ -59,8 +61,9 @@ pub struct NetworkPage(Rc<Inner>);
 struct Inner {
     weak_self: Weak<Inner>,
     root: gtk::ScrolledWindow,
-    nodes_group: adw::PreferencesGroup,
-    searching_row: adw::ActionRow,
+    summary: gtk::Label,
+    searching: gtk::Label,
+    grid: gtk::Grid,
     own_id: String,
     watcher: RefCell<Option<Watcher>>,
     tick: RefCell<Option<glib::SourceId>>,
@@ -76,24 +79,41 @@ impl NetworkPage {
             .valign(gtk::Align::Center)
             .build();
         scan_button.add_css_class("flat");
-        let searching_row = adw::ActionRow::builder()
-            .title("Looking for SysMo on this network…")
-            .subtitle(format!(
-                "Nodes appear within a minute. Each needs SysMo or its node \
-                 reporter running, and UDP port {} open.",
+        let summary = gtk::Label::builder()
+            .xalign(0.0)
+            .hexpand(true)
+            .ellipsize(gtk::pango::EllipsizeMode::End)
+            .build();
+        summary.add_css_class("node-summary");
+        let top = gtk::Box::new(gtk::Orientation::Horizontal, 6);
+        top.append(&summary);
+        top.append(&scan_button);
+
+        let searching = gtk::Label::builder()
+            .label(format!(
+                "Looking for SysMo on this network…\nNodes appear within a minute. \
+                 Each needs SysMo or its node reporter running, and UDP port {} open.",
                 lan::PORT
             ))
+            .wrap(true)
+            .xalign(0.0)
             .build();
-        let nodes_group = adw::PreferencesGroup::builder().title("Nodes").build();
-        nodes_group.set_header_suffix(Some(&scan_button));
-        nodes_group.add(&searching_row);
+        searching.add_css_class("node-summary");
+        let grid = gtk::Grid::builder()
+            .column_homogeneous(true)
+            .row_homogeneous(true)
+            .column_spacing(6)
+            .row_spacing(6)
+            .build();
 
-        let column = gtk::Box::new(gtk::Orientation::Vertical, 18);
-        column.set_margin_top(8);
-        column.set_margin_bottom(12);
-        column.set_margin_start(12);
-        column.set_margin_end(12);
-        column.append(&nodes_group);
+        let column = gtk::Box::new(gtk::Orientation::Vertical, 6);
+        column.set_margin_top(4);
+        column.set_margin_bottom(10);
+        column.set_margin_start(10);
+        column.set_margin_end(10);
+        column.append(&top);
+        column.append(&searching);
+        column.append(&grid);
         let root = gtk::ScrolledWindow::builder()
             .hscrollbar_policy(gtk::PolicyType::Never)
             .vexpand(true)
@@ -103,8 +123,9 @@ impl NetworkPage {
         let page = Self(Rc::new_cyclic(|weak| Inner {
             weak_self: weak.clone(),
             root,
-            nodes_group,
-            searching_row,
+            summary,
+            searching,
+            grid,
             own_id: lan::node_id(),
             watcher: RefCell::new(None),
             tick: RefCell::new(None),
@@ -148,8 +169,8 @@ impl Inner {
                 self.watcher.replace(Some(watcher));
             }
             Err(e) => {
-                self.nodes_group
-                    .set_description(Some(&format!("Can't use the network: {e}")));
+                self.summary
+                    .set_text(&format!("Can't use the network: {e}"));
                 return;
             }
         }
@@ -186,7 +207,7 @@ impl Inner {
             watcher.bye(self.nodes.borrow().values().map(|node| node.ip));
         }
         for (_, node) in self.nodes.borrow_mut().drain() {
-            self.nodes_group.remove(&node.row);
+            self.grid.remove(&node.row);
         }
         self.last_discover.set(None);
         self.refresh(Instant::now());
@@ -216,10 +237,14 @@ impl Inner {
             .filter(|(_, node)| now.duration_since(node.last_seen) > GONE_AFTER)
             .map(|(id, _)| id.clone())
             .collect();
+        let removed = !gone.is_empty();
         for id in gone {
             if let Some(node) = self.nodes.borrow_mut().remove(&id) {
-                self.nodes_group.remove(&node.row);
+                self.grid.remove(&node.row);
             }
+        }
+        if removed {
+            self.reorder();
         }
         self.refresh(now);
     }
@@ -248,56 +273,61 @@ impl Inner {
         }
     }
 
+    /// A row: state stripe, number, "CPU 14%" in blue, "GPU 95%" in yellow.
     fn new_node(&self, status: &lan::Status, ip: IpAddr, now: Instant) -> Node {
-        let value_label = || {
-            let label = gtk::Label::new(None);
-            label.add_css_class("node-value");
-            label.add_css_class("tnum");
-            label.set_width_chars(8);
-            label.set_xalign(1.0);
-            label
-        };
-        let cpu = value_label();
-        let gpu = value_label();
-        let badge = gtk::Label::new(None);
-        badge.add_css_class("node-badge");
-        badge.set_width_chars(8);
-        badge.set_valign(gtk::Align::Center);
+        let row = gtk::Box::new(gtk::Orientation::Horizontal, 7);
+        row.add_css_class("node-line");
+        let stripe = gtk::Box::new(gtk::Orientation::Horizontal, 0);
+        stripe.add_css_class("node-stripe");
+        row.append(&stripe);
+        let number = gtk::Label::builder().width_chars(4).xalign(0.0).build();
+        number.add_css_class("node-number");
+        number.add_css_class("tnum");
+        row.append(&number);
 
-        let row = adw::ActionRow::new();
-        row.add_css_class("node-row");
-        row.add_suffix(&cpu);
-        row.add_suffix(&gpu);
-        row.add_suffix(&badge);
+        let cell = |tag: &str, class: &str| {
+            let cell = gtk::Box::new(gtk::Orientation::Horizontal, 3);
+            cell.set_hexpand(true);
+            let label = gtk::Label::new(Some(tag));
+            label.add_css_class("node-tag");
+            label.add_css_class(class);
+            cell.append(&label);
+            let value = gtk::Label::builder().hexpand(true).xalign(1.0).build();
+            value.add_css_class("node-value");
+            value.add_css_class("tnum");
+            value.add_css_class(class);
+            cell.append(&value);
+            row.append(&cell);
+            value
+        };
+        let cpu = cell("CPU", "node-cpu");
+        let gpu = cell("GPU", "node-gpu");
         Node {
             status: status.clone(),
             ip,
             last_seen: now,
             activity: Activity::default(),
             row,
+            number,
             cpu,
             gpu,
-            badge,
         }
     }
 
-    /// This PC first, then by name, so rows do not jump around.
+    /// This PC first, then by address, filling the left column top to bottom
+    /// and then the right one.
     fn reorder(&self) {
         let nodes = self.nodes.borrow();
         let mut ids: Vec<&String> = nodes.keys().collect();
-        ids.sort_by_key(|id| {
-            (
-                **id != self.own_id,
-                nodes[*id].status.name.to_lowercase(),
-                (*id).clone(),
-            )
-        });
-        for id in ids {
-            let row = &nodes[id].row;
+        ids.sort_by_key(|id| (**id != self.own_id, nodes[*id].ip, (*id).clone()));
+        let rows = ids.len().div_ceil(2).max(1);
+        for (i, id) in ids.iter().enumerate() {
+            let row = &nodes[*id].row;
             if row.parent().is_some() {
-                self.nodes_group.remove(row);
+                self.grid.remove(row);
             }
-            self.nodes_group.add(row);
+            self.grid
+                .attach(row, (i / rows) as i32, (i % rows) as i32, 1, 1);
         }
     }
 
@@ -305,29 +335,30 @@ impl Inner {
     fn show(&self, id: &str, node: &Node, now: Instant) -> State {
         let state = node.state(now);
         let status = &node.status;
-        node.row.set_title(&status.name);
-        node.row.set_subtitle(&if id == self.own_id {
-            format!("This PC · {}", node.ip)
-        } else {
-            node.ip.to_string()
-        });
-        node.cpu.set_text(&format!("CPU {:.0}%", status.cpu));
+        let this_pc = id == self.own_id;
+        node.number.set_text(&number(node.ip));
+        node.cpu.set_text(&format!("{:.0}%", status.cpu));
         node.gpu.set_text(&match status.gpu {
-            Some(gpu) => format!("GPU {gpu:.0}%"),
-            None => "GPU –".to_owned(),
+            Some(gpu) => format!("{gpu:.0}%"),
+            None => "–".to_owned(),
         });
-        set_tooltip(
-            &node.gpu,
-            match status.gpus {
-                0 => Some("No GPU reading"),
-                1 => None,
-                _ => Some("Average of its GPUs"),
-            },
-        );
-        let (class, text) = match state {
-            State::Working => ("node-working", "Working"),
-            State::Idle => ("node-idle", "Idle"),
-            State::NoReply => ("node-no-reply", "No reply"),
+
+        // The name and full address, which the row has no room for.
+        let mut tooltip = format!("{} · {}", status.name, node.ip);
+        if this_pc {
+            tooltip.push_str("\nThis PC");
+        }
+        match status.gpus {
+            0 => tooltip.push_str("\nNo GPU reading"),
+            1 => {}
+            n => tooltip.push_str(&format!("\nGPU: average of its {n} GPUs")),
+        }
+        set_tooltip(&node.row, Some(&tooltip));
+
+        let class = match state {
+            State::Working => "node-working",
+            State::Idle => "node-idle",
+            State::NoReply => "node-no-reply",
         };
         for other in ["node-working", "node-idle", "node-no-reply"] {
             if other != class {
@@ -335,7 +366,9 @@ impl Inner {
             }
         }
         node.row.add_css_class(class);
-        node.badge.set_text(text);
+        if this_pc {
+            node.row.add_css_class("node-this-pc");
+        }
         state
     }
 
@@ -351,24 +384,24 @@ impl Inner {
             }
         }
 
-        self.searching_row.set_visible(nodes.is_empty());
-        let mut summary = if nodes.is_empty() {
-            String::new()
-        } else {
-            let mut parts = vec![format!("{} working", working), format!("{} idle", idle)];
-            if no_reply > 0 {
-                parts.push(format!("{no_reply} not replying"));
-            }
-            parts.join(" · ")
-        };
-        if let Some(last) = self.last_discover.get() {
-            let next = DISCOVER_EVERY.saturating_sub(now.duration_since(last));
-            if !summary.is_empty() {
-                summary.push_str(" · ");
-            }
-            summary.push_str(&format!("next scan in {} s", next.as_secs()));
+        self.searching.set_visible(nodes.is_empty());
+        let mut parts = Vec::new();
+        if !nodes.is_empty() {
+            parts.push(format!("{} nodes", nodes.len()));
+            parts.push(format!("{working} working"));
+            parts.push(format!("{idle} idle"));
         }
-        self.nodes_group
-            .set_description(Some(summary.as_str()).filter(|summary| !summary.is_empty()));
+        if no_reply > 0 {
+            parts.push(format!("{no_reply} not replying"));
+        }
+        self.summary.set_text(&parts.join(" · "));
+    }
+}
+
+/// A node's number: the last part of its IPv4 address, such as ".223".
+fn number(ip: IpAddr) -> String {
+    match ip {
+        IpAddr::V4(ip) => format!(".{}", ip.octets()[3]),
+        IpAddr::V6(ip) => ip.to_string(),
     }
 }

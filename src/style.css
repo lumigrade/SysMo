@@ -66,39 +66,66 @@ scrolledwindow > viewport > * {
     padding: 1px 6px;
 }
 
-/* Network tab: one row per node, green while it works, red while it idles,
- * dimmed while it does not reply. */
-row.node-row.node-working {
-    background-color: alpha(#2ec27e, 0.24);
+/* Network tab: one slim row per node in two columns. A stripe and tint show
+ * its state: green while it works, red while it idles, dimmed while it does
+ * not reply. CPU is blue and GPU yellow; this PC has a white outline. */
+.node-summary {
+    color: alpha(#ffffff, 0.72);
+    font-size: 0.92em;
 }
 
-row.node-row.node-idle {
-    background-color: alpha(#e01b24, 0.32);
+.node-line {
+    min-height: 34px;
+    border-radius: 5px;
+    padding: 0 6px;
 }
 
-row.node-row.node-no-reply {
-    opacity: 0.55;
+.node-line.node-working {
+    background-color: alpha(#2ec27e, 0.26);
 }
 
-.node-value {
-    font-weight: bold;
+.node-line.node-idle {
+    background-color: alpha(#e01b24, 0.42);
 }
 
-.node-badge {
-    font-weight: 800;
-    font-size: 0.85em;
-    color: #ffffff;
-    border-radius: 6px;
-    padding: 2px 6px;
-    background-color: alpha(#ffffff, 0.18);
+.node-line.node-no-reply {
+    opacity: 0.45;
 }
 
-row.node-working .node-badge {
-    background-color: #26a269;
+.node-line.node-this-pc {
+    box-shadow: inset 0 0 0 1px alpha(#ffffff, 0.75);
 }
 
-row.node-idle .node-badge {
+.node-stripe {
+    min-width: 5px;
+    margin: 6px 0;
+    border-radius: 3px;
+    background-color: alpha(#ffffff, 0.30);
+}
+
+.node-working .node-stripe {
+    background-color: #2ec27e;
+}
+
+.node-idle .node-stripe {
     background-color: #e01b24;
+}
+
+.node-number,
+.node-value {
+    font-weight: 800;
+}
+
+.node-tag {
+    font-size: 0.85em;
+}
+
+.node-cpu {
+    color: #62a0ea;
+}
+
+.node-gpu {
+    color: #f8e45c;
 }
 
 .tnum {
