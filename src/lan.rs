@@ -9,8 +9,11 @@
  * Messages are single UDP datagrams of UTF-8 text:
  *   SYSMO/1 DISCOVER lease=<seconds>                      watcher -> broadcast
  *   SYSMO/1 BYE                                           watcher -> reporter
- *   SYSMO/1 STATUS id=<hex> cpu=<%> gpu=<%|-> gpus=<n> name=<host>
- *                                                         reporter -> watcher
+ *   SYSMO/1 STATUS id=<hex> cpu=<%> gpu=<%|-> gpus=<n> ct=<°C|-> gt=<°C|->
+ *                  name=<host>                            reporter -> watcher
+ *
+ * `ct` and `gt` (CPU and average GPU temperature) came later: a watcher
+ * treats them as unknown when missing, and an older one ignores them.
  *
  * SPDX-License-Identifier: GPL-3.0-or-later
  */
@@ -22,6 +25,8 @@ use std::net::{IpAddr, Ipv4Addr, SocketAddr, UdpSocket};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
+
+use crate::engine::NodeLoad;
 
 pub const PORT: u16 = 47917;
 /// How long a reporter keeps sending after a DISCOVER: a bit more than the
@@ -47,6 +52,9 @@ pub struct Status {
     /// Average over the GPUs; `None` without a GPU reading.
     pub gpu: Option<f32>,
     pub gpus: u32,
+    pub cpu_temp: Option<f32>,
+    /// Average over the GPUs that report one.
+    pub gpu_temp: Option<f32>,
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -62,14 +70,18 @@ impl Message {
             Self::Discover { lease } => format!("{MAGIC} DISCOVER lease={}", lease.as_secs()),
             Self::Bye => format!("{MAGIC} BYE"),
             Self::Status(status) => {
-                let gpu = status
-                    .gpu
-                    .map(|gpu| format!("{gpu:.1}"))
-                    .unwrap_or_else(|| "-".to_owned());
+                let optional = |value: Option<f32>, decimals: usize| {
+                    value.map_or_else(|| "-".to_owned(), |v| format!("{v:.decimals$}"))
+                };
                 let name: String = status.name.chars().take(64).collect();
                 format!(
-                    "{MAGIC} STATUS id={} cpu={:.1} gpu={gpu} gpus={} name={name}",
-                    status.id, status.cpu, status.gpus
+                    "{MAGIC} STATUS id={} cpu={:.1} gpu={} gpus={} ct={} gt={} name={name}",
+                    status.id,
+                    status.cpu,
+                    optional(status.gpu, 1),
+                    status.gpus,
+                    optional(status.cpu_temp, 0),
+                    optional(status.gpu_temp, 0),
                 )
             }
         }
@@ -93,6 +105,11 @@ impl Message {
                     let value: f32 = field(fields, key)?.parse().ok()?;
                     value.is_finite().then_some(value.clamp(0.0, 100.0))
                 };
+                // Missing (an older reporter), "-" or nonsense: unknown.
+                let temperature = |key| -> Option<f32> {
+                    let value: f32 = field(fields, key)?.parse().ok()?;
+                    (value.is_finite() && (-60.0..=200.0).contains(&value)).then_some(value)
+                };
                 let id = field(fields, "id")?;
                 if id.is_empty() || name.contains('\n') {
                     return None;
@@ -103,6 +120,8 @@ impl Message {
                     cpu: percent("cpu")?,
                     gpu: percent("gpu"),
                     gpus: field(fields, "gpus")?.parse().ok()?,
+                    cpu_temp: temperature("ct"),
+                    gpu_temp: temperature("gt"),
                 }))
             }
             _ => None,
@@ -181,18 +200,11 @@ pub fn node_id() -> String {
     format!("{hash:016x}")
 }
 
-#[derive(Clone, Copy)]
-struct Load {
-    cpu: f32,
-    gpu: Option<f32>,
-    gpus: u32,
-}
-
 /// Answers watchers and sends them this computer's load once a second.
 pub struct Reporter {
     #[cfg(test)]
     port: u16,
-    load: Arc<Mutex<Option<Load>>>,
+    load: Arc<Mutex<Option<NodeLoad>>>,
     stop: Arc<AtomicBool>,
 }
 
@@ -203,7 +215,7 @@ impl Reporter {
         #[cfg(test)]
         let port = socket.local_addr()?.port();
 
-        let load = Arc::new(Mutex::new(None::<Load>));
+        let load = Arc::new(Mutex::new(None::<NodeLoad>));
         let stop = Arc::new(AtomicBool::new(false));
         let id = node_id();
         let name = host_name();
@@ -222,6 +234,8 @@ impl Reporter {
                                 cpu: load.cpu,
                                 gpu: load.gpu,
                                 gpus: load.gpus,
+                                cpu_temp: load.cpu_temp,
+                                gpu_temp: load.gpu_temp,
                             })
                             .encode(),
                         )
@@ -282,8 +296,8 @@ impl Reporter {
     }
 
     /// The latest reading, sent with the next datagram.
-    pub fn update(&self, cpu: f32, gpu: Option<f32>, gpus: u32) {
-        *self.load.lock().unwrap() = Some(Load { cpu, gpu, gpus });
+    pub fn update(&self, load: NodeLoad) {
+        *self.load.lock().unwrap() = Some(load);
     }
 }
 
@@ -413,6 +427,8 @@ mod tests {
             cpu: 37.5,
             gpu: Some(88.0),
             gpus: 2,
+            cpu_temp: Some(64.0),
+            gpu_temp: Some(81.0),
         }
     }
 
@@ -427,6 +443,8 @@ mod tests {
             Message::Status(Status {
                 gpu: None,
                 gpus: 0,
+                cpu_temp: None,
+                gpu_temp: None,
                 ..status()
             }),
         ] {
@@ -434,6 +452,24 @@ mod tests {
             assert!(text.len() < 128, "{text}");
             assert_eq!(Message::decode(&text), Some(message));
         }
+    }
+
+    #[test]
+    fn reads_reporters_without_temperatures() {
+        // What SysMo sent before temperatures were added.
+        let old = "SYSMO/1 STATUS id=ab cpu=12.0 gpu=50.0 gpus=1 name=render 01";
+        let Some(Message::Status(status)) = Message::decode(old) else {
+            panic!("not decoded");
+        };
+        assert_eq!((status.cpu, status.gpu), (12.0, Some(50.0)));
+        assert_eq!((status.cpu_temp, status.gpu_temp), (None, None));
+        assert_eq!(status.name, "render 01");
+        // Nonsense temperatures read as unknown, not as a reading.
+        let odd = "SYSMO/1 STATUS id=ab cpu=1 gpu=- gpus=0 ct=900 gt=x name=a";
+        let Some(Message::Status(status)) = Message::decode(odd) else {
+            panic!("not decoded");
+        };
+        assert_eq!((status.cpu_temp, status.gpu_temp), (None, None));
     }
 
     #[test]
@@ -518,7 +554,13 @@ mod tests {
     #[test]
     fn watcher_and_reporter_talk() {
         let reporter = Reporter::start(0).unwrap();
-        reporter.update(42.0, Some(77.0), 1);
+        reporter.update(NodeLoad {
+            cpu: 42.0,
+            gpu: Some(77.0),
+            gpus: 1,
+            cpu_temp: Some(55.0),
+            gpu_temp: Some(70.0),
+        });
         let (sender, reports) = async_channel::unbounded();
         let target = SocketAddr::from((Ipv4Addr::LOCALHOST, reporter.port()));
         let watcher = Watcher::start(target, sender).unwrap();
@@ -542,6 +584,8 @@ mod tests {
         let first = receive(Duration::from_secs(1)).expect("no answer to DISCOVER");
         assert_eq!(first.status.cpu, 42.0);
         assert_eq!(first.status.gpu, Some(77.0));
+        assert_eq!(first.status.cpu_temp, Some(55.0));
+        assert_eq!(first.status.gpu_temp, Some(70.0));
         assert_eq!(first.status.id, node_id());
         // And then once a second.
         assert!(receive(Duration::from_millis(1600)).is_some());

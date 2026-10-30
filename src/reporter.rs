@@ -64,8 +64,7 @@ fn main() -> ExitCode {
         while !stop.load(Ordering::Relaxed) && started.elapsed() < Duration::from_secs(1) {
             match samples.try_recv() {
                 Ok(readings) => {
-                    let load = engine::node_load(&readings);
-                    reporter.update(load.cpu, load.gpu, load.gpus);
+                    reporter.update(engine::node_load(&readings));
                     reading = engine::gpus_with_load(&readings);
                 }
                 Err(async_channel::TryRecvError::Empty) => {

@@ -197,10 +197,11 @@ log out and back in, since Ubuntu adds it at login when the directory exists.
 The title bar switches between **This PC** (everything above) and
 **Network**: every computer on your local network that runs SysMo, as slim
 rows in two columns, updated every second. A row shows the computer's
-number (the last part of its IP address, such as `.223`), its CPU load in
-blue and its GPU load in yellow (the average, on computers with several
-GPUs). Hover a row for the computer's name and full address; this PC has a
-white outline.
+number (the last part of its IP address, such as `.223`), then a blue CPU
+badge and a yellow GPU badge, each followed by load (in %) | temperature.
+Computers with several GPUs show their average. A temperature above 80 °C
+sits in a yellow box, above 86 °C in a red one. Hover a row for the
+computer's name and full address; this PC has a white outline.
 
 <p>
   <img src="screenshots/this-pc.png" alt="The This PC tab: CPU, memory, network, disk and two GPUs" width="45%">
@@ -212,6 +213,9 @@ white outline.
 * **Red** (idle) — both have stayed under 10 % for 30 seconds.
 * **Dimmed** (not replying) — nothing heard for 5 seconds. After 60 seconds
   of silence the node is removed from the list.
+
+A computer whose SysMo or node reporter predates temperatures shows `–` for
+them until it is updated (for nodes, rerun `tools/install-nodes.sh`).
 
 New nodes show up within a minute, or at once with the ↻ button. Each node
 needs SysMo installed and running (it starts at login, and keeps reporting

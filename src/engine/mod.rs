@@ -75,23 +75,32 @@ pub fn displayed_gpus(gpus: &HashMap<String, Gpu>) -> Vec<&Gpu> {
 }
 
 /// What the Network tab shows for a computer.
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
 pub struct NodeLoad {
     pub cpu: f32,
     /// Average over the shown GPUs that report a load.
     pub gpu: Option<f32>,
     pub gpus: u32,
+    pub cpu_temp: Option<f32>,
+    /// Average over the shown GPUs that report a temperature.
+    pub gpu_temp: Option<f32>,
 }
 
 pub fn node_load(readings: &Readings) -> NodeLoad {
     let gpus = displayed_gpus(&readings.gpus);
-    let loads: Vec<f32> = gpus
-        .iter()
-        .filter_map(|gpu| gpu.utilization_percent)
-        .collect();
+    let average = |values: Vec<f32>| {
+        (!values.is_empty()).then(|| values.iter().sum::<f32>() / values.len() as f32)
+    };
     NodeLoad {
         cpu: readings.cpu.total_usage_percent,
-        gpu: (!loads.is_empty()).then(|| loads.iter().sum::<f32>() / loads.len() as f32),
+        gpu: average(
+            gpus.iter()
+                .filter_map(|gpu| gpu.utilization_percent)
+                .collect(),
+        ),
         gpus: gpus.len() as u32,
+        cpu_temp: readings.cpu.temperature_celsius,
+        gpu_temp: average(gpus.iter().filter_map(|gpu| gpu.temperature_c).collect()),
     }
 }
 
@@ -197,6 +206,13 @@ mod tests {
         }
     }
 
+    fn hot(gpu: Gpu, celsius: f32) -> Gpu {
+        Gpu {
+            temperature_c: Some(celsius),
+            ..gpu
+        }
+    }
+
     fn readings(cpu: f32, gpus: Vec<Gpu>) -> Readings {
         Readings {
             cpu: Cpu {
@@ -225,6 +241,24 @@ mod tests {
         assert_eq!(load.cpu, 12.0);
         assert_eq!(load.gpu, Some(60.0));
         assert_eq!(load.gpus, 2);
+    }
+
+    #[test]
+    fn node_load_averages_the_shown_gpu_temperatures() {
+        let mut r = readings(
+            12.0,
+            vec![
+                hot(gpu("a", 0x10de, Some(90.0)), 70.0),
+                hot(gpu("b", 0x10de, Some(30.0)), 80.0),
+                // Hidden next to a discrete GPU, so not averaged in.
+                hot(gpu("i", 0x8086, Some(0.0)), 40.0),
+            ],
+        );
+        r.cpu.temperature_celsius = Some(61.0);
+        let load = node_load(&r);
+        assert_eq!((load.cpu_temp, load.gpu_temp), (Some(61.0), Some(75.0)));
+        let cold = node_load(&readings(5.0, vec![gpu("a", 0x10de, Some(10.0))]));
+        assert_eq!((cold.cpu_temp, cold.gpu_temp), (None, None));
     }
 
     #[test]

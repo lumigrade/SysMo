@@ -68,7 +68,8 @@ scrolledwindow > viewport > * {
 
 /* Network tab: one slim row per node in two columns. A stripe and tint show
  * its state: green while it works, red while it idles, dimmed while it does
- * not reply. CPU is blue and GPU yellow; this PC has a white outline. */
+ * not reply. A blue CPU badge and a yellow GPU badge each lead load |
+ * temperature; this PC has a white outline. */
 .node-summary {
     color: alpha(#ffffff, 0.72);
     font-size: 0.92em;
@@ -77,7 +78,7 @@ scrolledwindow > viewport > * {
 .node-line {
     min-height: 34px;
     border-radius: 5px;
-    padding: 0 6px;
+    padding: 0 4px;
 }
 
 .node-line.node-working {
@@ -114,18 +115,34 @@ scrolledwindow > viewport > * {
 .node-number,
 .node-value {
     font-weight: 800;
+    font-size: 0.95em;
 }
 
-.node-tag {
-    font-size: 0.85em;
+.node-divider {
+    min-width: 1px;
+    margin: 9px 1px;
+    background-color: alpha(#ffffff, 0.30);
 }
 
-.node-cpu {
-    color: #62a0ea;
+.node-temp {
+    font-size: 0.8em;
+    font-weight: 600;
+    color: alpha(#ffffff, 0.80);
+    border-radius: 4px;
+    padding: 0 1px;
 }
 
-.node-gpu {
-    color: #f8e45c;
+/* Above 80 °C: a yellow box; above 86 °C: a red one. Black text on both. */
+.node-temp.node-temp-warm {
+    background-color: #f6d32d;
+    color: #000000;
+    font-weight: 800;
+}
+
+.node-temp.node-temp-hot {
+    background-color: #e01b24;
+    color: #000000;
+    font-weight: 800;
 }
 
 .tnum {

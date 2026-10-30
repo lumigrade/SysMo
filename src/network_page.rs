@@ -1,7 +1,8 @@
 /* network_page.rs - the Network tab: every SysMo on the local network, one
  * slim row each in two columns: its number (the last part of its address),
- * CPU load in blue and GPU load in yellow, on green while it works and red
- * while it idles.
+ * then a blue CPU badge and a yellow GPU badge, each with load | temperature.
+ * Rows are green while the node works and red while it idles; a temperature
+ * above 80 °C sits in a yellow box, above 86 °C in a red one.
  *
  * SPDX-License-Identifier: GPL-3.0-or-later
  */
@@ -15,8 +16,14 @@ use std::time::{Duration, Instant};
 use adw::prelude::*;
 use gtk::glib;
 
+use crate::icons;
 use crate::lan::{self, Activity, Report, Watcher};
 use crate::sections::set_tooltip;
+
+/// A temperature above this many °C sits in a yellow box...
+const WARM_ABOVE: f32 = 80.0;
+/// ...and above this one in a red box.
+const HOT_ABOVE: f32 = 86.0;
 
 /// One "who's there?" a minute finds new nodes.
 const DISCOVER_EVERY: Duration = Duration::from_secs(60);
@@ -40,7 +47,9 @@ struct Node {
     row: gtk::Box,
     number: gtk::Label,
     cpu: gtk::Label,
+    cpu_temp: gtk::Label,
     gpu: gtk::Label,
+    gpu_temp: gtk::Label,
 }
 
 impl Node {
@@ -102,15 +111,15 @@ impl NetworkPage {
         let grid = gtk::Grid::builder()
             .column_homogeneous(true)
             .row_homogeneous(true)
-            .column_spacing(6)
+            .column_spacing(5)
             .row_spacing(6)
             .build();
 
         let column = gtk::Box::new(gtk::Orientation::Vertical, 6);
         column.set_margin_top(4);
         column.set_margin_bottom(10);
-        column.set_margin_start(10);
-        column.set_margin_end(10);
+        column.set_margin_start(8);
+        column.set_margin_end(8);
         column.append(&top);
         column.append(&searching);
         column.append(&grid);
@@ -273,35 +282,53 @@ impl Inner {
         }
     }
 
-    /// A row: state stripe, number, "CPU 14%" in blue, "GPU 95%" in yellow.
+    /// A row: state stripe, number, then the CPU badge with load | temperature
+    /// and the GPU badge with load | temperature. Every number sits on the
+    /// same baseline, whatever its size.
     fn new_node(&self, status: &lan::Status, ip: IpAddr, now: Instant) -> Node {
-        let row = gtk::Box::new(gtk::Orientation::Horizontal, 7);
+        let row = gtk::Box::new(gtk::Orientation::Horizontal, 4);
         row.add_css_class("node-line");
         let stripe = gtk::Box::new(gtk::Orientation::Horizontal, 0);
         stripe.add_css_class("node-stripe");
         row.append(&stripe);
-        let number = gtk::Label::builder().width_chars(4).xalign(0.0).build();
+        let number = gtk::Label::builder()
+            .width_chars(4)
+            .xalign(0.0)
+            .valign(gtk::Align::BaselineFill)
+            .build();
         number.add_css_class("node-number");
         number.add_css_class("tnum");
         row.append(&number);
 
-        let cell = |tag: &str, class: &str| {
-            let cell = gtk::Box::new(gtk::Orientation::Horizontal, 3);
-            cell.set_hexpand(true);
-            let label = gtk::Label::new(Some(tag));
-            label.add_css_class("node-tag");
-            label.add_css_class(class);
-            cell.append(&label);
-            let value = gtk::Label::builder().hexpand(true).xalign(1.0).build();
+        let group = |badge: gtk::DrawingArea| {
+            let group = gtk::Box::new(gtk::Orientation::Horizontal, 2);
+            group.set_hexpand(true);
+            group.set_valign(gtk::Align::BaselineFill);
+            group.append(&badge);
+            let value = gtk::Label::builder()
+                .width_chars(3)
+                .xalign(1.0)
+                .valign(gtk::Align::BaselineFill)
+                .build();
             value.add_css_class("node-value");
             value.add_css_class("tnum");
-            value.add_css_class(class);
-            cell.append(&value);
-            row.append(&cell);
-            value
+            group.append(&value);
+            let divider = gtk::Box::new(gtk::Orientation::Horizontal, 0);
+            divider.add_css_class("node-divider");
+            group.append(&divider);
+            let temp = gtk::Label::builder()
+                .width_chars(3)
+                .xalign(0.0)
+                .valign(gtk::Align::BaselineCenter)
+                .build();
+            temp.add_css_class("node-temp");
+            temp.add_css_class("tnum");
+            group.append(&temp);
+            row.append(&group);
+            (value, temp)
         };
-        let cpu = cell("CPU", "node-cpu");
-        let gpu = cell("GPU", "node-gpu");
+        let (cpu, cpu_temp) = group(icons::cpu_badge(16));
+        let (gpu, gpu_temp) = group(icons::gpu_badge(16));
         Node {
             status: status.clone(),
             ip,
@@ -310,7 +337,9 @@ impl Inner {
             row,
             number,
             cpu,
+            cpu_temp,
             gpu,
+            gpu_temp,
         }
     }
 
@@ -337,11 +366,11 @@ impl Inner {
         let status = &node.status;
         let this_pc = id == self.own_id;
         node.number.set_text(&number(node.ip));
-        node.cpu.set_text(&format!("{:.0}%", status.cpu));
-        node.gpu.set_text(&match status.gpu {
-            Some(gpu) => format!("{gpu:.0}%"),
-            None => "–".to_owned(),
-        });
+        node.cpu.set_text(&format!("{:.0}", status.cpu));
+        node.gpu
+            .set_text(&status.gpu.map_or("–".to_owned(), |gpu| format!("{gpu:.0}")));
+        show_temperature(&node.cpu_temp, status.cpu_temp);
+        show_temperature(&node.gpu_temp, status.gpu_temp);
 
         // The name and full address, which the row has no room for.
         let mut tooltip = format!("{} · {}", status.name, node.ip);
@@ -395,6 +424,25 @@ impl Inner {
             parts.push(format!("{no_reply} not replying"));
         }
         self.summary.set_text(&parts.join(" · "));
+    }
+}
+
+/// "68°", in a yellow box above 80 °C and a red one above 86 °C; "–" when
+/// the node sends none (no sensor, or an older SysMo).
+fn show_temperature(label: &gtk::Label, celsius: Option<f32>) {
+    let rounded = celsius.map(f32::round);
+    label.set_text(&rounded.map_or("–".to_owned(), |t| format!("{t:.0}°")));
+    let heat = match rounded {
+        Some(t) if t > HOT_ABOVE => Some("node-temp-hot"),
+        Some(t) if t > WARM_ABOVE => Some("node-temp-warm"),
+        _ => None,
+    };
+    for class in ["node-temp-warm", "node-temp-hot"] {
+        if Some(class) == heat {
+            label.add_css_class(class);
+        } else {
+            label.remove_css_class(class);
+        }
     }
 }
 
